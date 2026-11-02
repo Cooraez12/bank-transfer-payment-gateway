@@ -7,7 +7,6 @@ if (!defined('WP_UNINSTALL_PLUGIN')) {
 	exit;
 }
 
-
 function bank_transfer_uninstall() {
 	// Clear scheduled cron events
 	wp_clear_scheduled_hook('bank_transfer_cron_event');
@@ -20,8 +19,6 @@ function bank_transfer_uninstall() {
 		'bank_transfer_group_id',
 		'bank_transfer_unique_id',
 		'bank_transfer_schema_version',
-		'bank_transfer_bytenft_migrated',
-		'bank_transfer_bytenft_migration_notice',
 	];
 
 	foreach ($options_to_delete as $option_name) {
