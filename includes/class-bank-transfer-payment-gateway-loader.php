@@ -5,6 +5,7 @@ if (!defined('ABSPATH')) {
 
 // Include the configuration file
 require_once plugin_dir_path(__FILE__) . 'config.php';
+require_once plugin_dir_path(__FILE__) . 'bank-transfer-payment-gateway-utils.php';
 require_once plugin_dir_path(__FILE__) . 'class-bank-transfer-payment-state-engine.php';
 require_once plugin_dir_path(__FILE__) . 'class-bank-transfer-payment-logger.php';
 /**
@@ -283,6 +284,14 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 		}
 
 		$created = wc_get_order( $order_id );
+		if ( $created ) {
+			$version = bank_transfer_get_plugin_version();
+			if ( ! empty( $version ) ) {
+				$created->update_meta_data( '_bank_transfer_plugin_version', $version );
+				$created->update_meta_data( 'bank_transfer_plugin_version', $version );
+				$created->save();
+			}
+		}
 
 		Bank_Transfer_Payment_Gateway_Logger::info(
 			'Created order for block checkout',
@@ -399,6 +408,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 					'bank_transfer_nonce'  => wp_create_nonce('bank_transfer_payment'), 
 					'checkout_url'         => wc_get_checkout_url(),
 					'payment_method'       => 'bank_transfer',
+					'plugin_version'       => bank_transfer_get_plugin_version(),
 				]
 			);
 	
@@ -638,6 +648,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 					'payment_token'  => $payment_token,
 					'is_sandbox'     => $is_sandbox,
 					'api_public_key' => $public_key,
+					'api_secret'     => $secret_key,
 				]),
 				'headers'   => [
 					'Content-Type'  => 'application/json',
@@ -875,6 +886,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 					'payment_token'  => $payment_token,
 					'is_sandbox'     => $is_sandbox,
 					'api_public_key' => $public_key,
+					'api_secret'     => $secret_key,
 				]),
 				'headers'   => [
 					'Content-Type'  => 'application/json',
@@ -1383,7 +1395,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 			'valid_accounts'         => $sanitized_accounts,
 			'plugin_status'          => (int) $plugin_status,
 			'gateway_loaded'         => (int) $gateway_loaded,
-			'plugin_version'         => BANK_TRANSFER_PLUGIN_VERSION,
+			'plugin_version'         => bank_transfer_get_plugin_version(),
 			'wordpress_version'      => get_bloginfo('version'),
 			'woocommerce_version'    => get_option('woocommerce_version') ?: '',
 			'woocommerce_db_version' => get_option('woocommerce_db_version'),

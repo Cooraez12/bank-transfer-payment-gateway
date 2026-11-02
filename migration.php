@@ -180,5 +180,6 @@ function bank_transfer_on_plugin_deactivate() {
 	}
 }
 
+
 register_activation_hook(BANK_TRANSFER_PAYMENT_GATEWAY_FILE, 'bank_transfer_on_plugin_activate');
 register_deactivation_hook(BANK_TRANSFER_PAYMENT_GATEWAY_FILE, 'bank_transfer_on_plugin_deactivate');

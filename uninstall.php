@@ -7,6 +7,7 @@ if (!defined('WP_UNINSTALL_PLUGIN')) {
 	exit;
 }
 
+
 function bank_transfer_uninstall() {
 	// Clear scheduled cron events
 	wp_clear_scheduled_hook('bank_transfer_cron_event');

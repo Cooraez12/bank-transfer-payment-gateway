@@ -7,7 +7,7 @@
  * Author URI: https://rt.app/
  * Text Domain: bank-transfer-payment-gateway
  * Plugin URI: https://pay.rt.app/
- * Version: 1.0.0
+ * Version:  1.0.0
  * License: GPLv3 or later
  * License URI: https://www.gnu.org/licenses/gpl-3.0.html
  *
@@ -30,6 +30,9 @@ add_action('before_woocommerce_init', function () {
 		\Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility('custom_order_tables', BANK_TRANSFER_PAYMENT_GATEWAY_FILE, true);
 	}
 });
+
+// Include configuration
+require_once BANK_TRANSFER_PAYMENT_GATEWAY_PLUGIN_DIR . 'includes/config.php';
 
 // Include utility functions
 require_once BANK_TRANSFER_PAYMENT_GATEWAY_PLUGIN_DIR . 'includes/bank-transfer-payment-gateway-utils.php';

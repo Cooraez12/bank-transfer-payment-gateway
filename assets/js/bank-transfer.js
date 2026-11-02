@@ -84,13 +84,18 @@
                 .addClass('loading')
                 .text('Processing...');
 
+            let data = $form.serialize();
+            if (typeof bank_transfer_params !== 'undefined' && bank_transfer_params.plugin_version) {
+                data += '&plugin_version=' + encodeURIComponent(bank_transfer_params.plugin_version);
+            }
+
             $.ajax({
 
                 type: 'POST',
 
                 url: wc_checkout_params.checkout_url,
 
-                data: $form.serialize(),
+                data: data,
 
                 dataType: 'json',
 
@@ -221,6 +226,10 @@
             let phoneField = document.querySelector('input[type="tel"], #phone, input[name="phone"]');
             if (phoneField && phoneField.value) {
                 data += '&billing_phone=' + encodeURIComponent(phoneField.value);
+            }
+
+            if (typeof bank_transfer_params !== 'undefined' && bank_transfer_params.plugin_version) {
+                data += '&plugin_version=' + encodeURIComponent(bank_transfer_params.plugin_version);
             }
 
             data += '&action=bank_transfer_block_gateway_process';

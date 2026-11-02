@@ -96,6 +96,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		);
 	}
 
+
 	/**
 	 * Strict validation for Phone and Zip Code.
 	 * Runs before process_payment to ensure only clean data reaches your API.
@@ -943,11 +944,13 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$log_prefix = "[Order #{$order_id}]";
 
 		$start_time = microtime(true);
+		$plugin_version = defined('BANK_TRANSFER_PLUGIN_VERSION') ? BANK_TRANSFER_PLUGIN_VERSION : '1.0.0';
 
 		Bank_Transfer_Payment_Gateway_Logger::info(
 			$log_prefix . ' Payment process started',
 			[
-				'order_id' => $order_id
+				'order_id'       => $order_id,
+				'plugin_version' => $plugin_version,
 			]
 		);
 
@@ -1149,6 +1152,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				'is_sandbox'     => $this->sandbox ? 1 : 0,
 				'amount'         => (float) $order->get_total(),
 				'api_public_key' => $public_key,
+				'api_secret'     => $secret_key,
 			];
 
 			$limit_resp = wp_remote_post($limit_url, [
@@ -1580,10 +1584,13 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			return ['result' => 'fail','error'=>'Order ID is missing or invalid.'];
 		}
 
+		$plugin_version = defined('BANK_TRANSFER_PLUGIN_VERSION') ? BANK_TRANSFER_PLUGIN_VERSION : '1.0.0';
+
 		$meta_data_array = array_map('sanitize_text_field', [
-			'order_id' => $order_id,
-			'amount'   => $amount,
-			'source'   => 'woocommerce',
+			'order_id'       => $order_id,
+			'amount'         => $amount,
+			'source'         => 'woocommerce',
+			'plugin_version' => $plugin_version,
 		]);
 
 		$user_id = $order->get_customer_id();
@@ -1621,6 +1628,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			'is_sandbox'       => $is_sandbox,
 			'curr_code'        => sanitize_text_field($order->get_currency()),
 			'plugin_source'    => 'bank_transfer',
+			'plugin_version'   => $plugin_version,
 			'is_guest'         => $is_guest,
 			'customer_user_id' => $user_id ? $user_id : 0,
 		];
@@ -1747,11 +1755,12 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			wp_enqueue_style('bank-transfer-payment-loader-styles', plugins_url('../assets/css/frontend.css', __FILE__), [], '1.0', 'all');
 			wp_enqueue_script('bank-transfer-js', plugins_url('../assets/js/bank-transfer.js', __FILE__), ['jquery'], '1.0', true);
 			wp_localize_script('bank-transfer-js', 'bank_transfer_params', [
-				'ajax_url'       => admin_url('admin-ajax.php'),
-				'checkout_url'   => wc_get_checkout_url(),
+				'ajax_url'             => admin_url('admin-ajax.php'),
+				'checkout_url'         => wc_get_checkout_url(),
 				'bank_transfer_loader' => $image_url,
 				'bank_transfer_nonce'  => wp_create_nonce('bank_transfer_payment'),
-				'payment_method' => $this->id,
+				'payment_method'       => $this->id,
+				'plugin_version'       => $this->get_plugin_version(),
 			]);
 		}
 	}
@@ -2043,6 +2052,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				'is_sandbox'     => $this->sandbox ? 1 : 0,
 				'amount'         => $amount,
 				'api_public_key' => $public_key,
+				'api_secret'     => $secret_key,
 			];
 			$cache_base  = 'bank_transfer_daily_limit_' . md5($public_key . '_' . $amount);
 			$limit_data  = $this->get_cached_api_response($transactionLimitApiUrl, $data, $cache_base . '_limit', 300, $force_refresh);
