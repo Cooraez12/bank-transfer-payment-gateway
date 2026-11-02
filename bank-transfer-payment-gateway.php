@@ -3,10 +3,10 @@
 /**
  * Plugin Name: Bank Transfer Payment Gateway
  * Description: Pay securely with Bank Transfer or Card via popup flow.
- * Author: RT
- * Author URI: https://qa.rt.app/
+ * Author: RT.app
+ * Author URI: https://rt.app/
  * Text Domain: bank-transfer-payment-gateway
- * Plugin URI: https://github.com/bytenft/bank-transfer-payment-gateway
+ * Plugin URI: https://pay.rt.app/
  * Version: 1.0.0
  * License: GPLv3 or later
  * License URI: https://www.gnu.org/licenses/gpl-3.0.html
