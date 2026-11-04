@@ -21,7 +21,6 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	private $admin_notices;
 	private $accounts = [];
 	private $current_account_index = 0;
-	private $used_accounts = [];
 
 	private static $log_once_flags = [];
 
@@ -544,6 +543,10 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			$live_status        = $account['live_status'] ?? 'Active';
 			$sandbox_status     = $has_sandbox ? ($account['sandbox_status'] ?? 'Active') : '';
 			$unique_id          = $account['unique_id'] ?? '';
+			if (empty($unique_id)) {
+				// Back-fill missing IDs here, on save, rather than while rendering the settings page.
+				$unique_id = $this->bank_transfer_get_unique_id();
+			}
 			$checkout_title      = $account['checkout_title'] ?? '';
 	        $checkout_subtitle   = $account['checkout_subtitle'] ?? '';
 
@@ -805,12 +808,12 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$global_settings = maybe_unserialize($global_settings);
 		$sandbox_enabled = !empty($global_settings['sandbox']) && $global_settings['sandbox'] === 'yes';
 
-		$updated = false;
+		// Render-only normalisation. This method runs on a GET of the settings page, so it must not
+		// write options; missing unique_ids are persisted by the save handler and the migration.
 		if (!empty($option_value)) {
 			foreach ($option_value as $index => &$account) {
 				if (empty($account['unique_id'])) {
 					$account['unique_id'] = $this->bank_transfer_get_unique_id();
-					$updated = true;
 				}
 				// Ensure all fields are present for new/empty accounts
 				if (!isset($account['checkout_title'])) {
@@ -822,10 +825,6 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			}
 		}
 		unset($account);
-
-		if ($updated) {
-			update_option('woocommerce_bank_transfer_payment_gateway_accounts', $option_value);
-		}
 
 		ob_start();
 		?>
@@ -969,7 +968,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		return ob_get_clean();
 	}
 
-	public function process_payment($order_id, $used_accounts = [])
+	public function process_payment($order_id)
 	{
 		global $wpdb;
 
@@ -1168,19 +1167,6 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				? $account['sandbox_secret_key']
 				: $account['live_secret_key'];
 
-			// Skip already used accounts
-			if (in_array($public_key, $used_accounts, true)) {
-
-				Bank_Transfer_Payment_Gateway_Logger::info(
-					$log_prefix . ' Account skipped (already used)',
-					[
-						'account_title' => $account['title'] ?? null,
-					]
-				);
-
-				continue;
-			}
-
 			// Prepare payment data
 			$data = $this->bank_transfer_prepare_payment_data($order, $public_key, $secret_key);
 
@@ -1194,7 +1180,6 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					]
 				);
 
-				$used_accounts[] = $public_key;
 				$failed_accounts[] = [
 					'account' => $account['title'] ?? null,
 					'reason'  => 'prepare_failed',
@@ -1232,7 +1217,6 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					]
 				);
 
-				$used_accounts[] = $public_key;
 				$failed_accounts[] = [
 					'account' => $account['title'] ?? null,
 					'reason'  => 'wp_error',
@@ -1257,7 +1241,6 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 				$last_error_data = $limit_data;
 
-				$used_accounts[] = $public_key;
 				$failed_accounts[] = [
 					'account' => $account['title'] ?? null,
 					'reason'  => 'limit_error',

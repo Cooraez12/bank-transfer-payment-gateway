@@ -6,6 +6,12 @@ if (!defined('ABSPATH')) {
 
 class Bank_Transfer_Payment_Gateway_Logger {
 
+	/** Max characters kept for upstream request/response bodies in log context. */
+	const MAX_BODY_LENGTH = 500;
+
+	/** Context keys (normalised: lowercase, no '_' or '-') that carry upstream request/response bodies. */
+	const BODY_KEYS = ['response', 'body', 'responsebody', 'rawbody', 'rawresponse', 'payload', 'requestbody'];
+
 	private static function get_logger()
 	{
 		if (!function_exists('wc_get_logger')) {
@@ -79,6 +85,12 @@ class Bank_Transfer_Payment_Gateway_Logger {
 				'address2',
 				'address',
 				'billingaddress',
+				'authorization',
+				'apikey',
+				'xapikey',
+				'nonce',
+				'signature',
+				'xsignature',
 			], true)) {
 				continue;
 			}
@@ -103,10 +115,37 @@ class Bank_Transfer_Payment_Gateway_Logger {
 				continue;
 			}
 
+			// Upstream request/response bodies: warning()/error() are not gated by the debug flag, so only
+			// record these when debug logging is on, and even then recursively sanitise and truncate them.
+			if (in_array($normalized_key, self::BODY_KEYS, true)) {
+				$clean[$key] = self::is_debug_enabled()
+					? self::truncate(self::sanitize_context($value))
+					: '[REDACTED_RESPONSE]';
+				continue;
+			}
+
 			$clean[$key] = is_array($value) ? self::sanitize_context($value) : $value;
 		}
 
 		return $clean;
+	}
+
+	private static function truncate($value)
+	{
+		if (null === $value || is_scalar($value)) {
+			$string = (string) $value;
+		} else {
+			$string = wp_json_encode($value);
+			if (!is_string($string)) {
+				return '[UNSERIALIZABLE]';
+			}
+		}
+
+		if (strlen($string) > self::MAX_BODY_LENGTH) {
+			return substr($string, 0, self::MAX_BODY_LENGTH) . '...[truncated]';
+		}
+
+		return $string;
 	}
 
 	private static function format_context($context)
