@@ -229,18 +229,6 @@
                 data += '&billing_phone=' + encodeURIComponent(phoneField.value);
             }
 
-            let consentField = document.querySelector('#bank_transfer_consent, input[name="bank_transfer_consent"]');
-            if (consentField) {
-                if (consentField.checked) {
-                    data += '&bank_transfer_consent=on';
-                } else {
-                    self.showCheckoutError('You must consent to the collection of your data to process this payment.');
-                    self.cleanupPopup();
-                    self.reset();
-                    return;
-                }
-            }
-
             if (typeof bank_transfer_params !== 'undefined' && bank_transfer_params.plugin_version) {
                 data += '&plugin_version=' + encodeURIComponent(bank_transfer_params.plugin_version);
             }

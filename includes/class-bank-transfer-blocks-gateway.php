@@ -76,18 +76,14 @@ class BANK_TRANSFER_Blocks_Gateway extends AbstractPaymentMethodType {
 			}
 		}
 
-		$show_consent = isset($this->settings['show_consent_checkbox']) && $this->settings['show_consent_checkbox'] === 'yes';
-
 		return [
-			'id'                    => $this->name,
-			'title'                 => sanitize_text_field($title),
-			'description'           => wp_kses_post($description),
-			'supports'              => ['products'],
-			'plugin_version'        => bank_transfer_get_plugin_version(),
-			'isActive'              => $this->is_active(),
-			'instructions'          => $this->settings['instructions'] ?? '',
-			'show_consent_checkbox' => $show_consent,
-			'consent_checkbox_text' => __('I consent to the collection of my data to process this payment', 'bank-transfer-payment-gateway'),
+			'id'          => $this->name,
+			'title'       => sanitize_text_field($title),
+			'description' => wp_kses_post($description),
+			'supports'    => ['products'],
+			'plugin_version' => bank_transfer_get_plugin_version(),
+			'isActive'    => $this->is_active(),
+			'instructions'=> $this->settings['instructions'] ?? '',
 		];
 	}
 }

@@ -1,6 +1,6 @@
 (function () {
     const { registerPaymentMethod } = window.wc?.wcBlocksRegistry || {};
-    const { createElement, RawHTML, useState } = window.wp?.element || {};
+    const { createElement, RawHTML } = window.wp?.element || {};
 
     if (typeof registerPaymentMethod !== 'function') {
         return;
@@ -12,51 +12,16 @@
     const label = settings.title || 'Bank Transfer';
     const description = settings.description || '';
 
-    const BankTransferContent = () => {
-        const [consented, setConsented] = useState ? useState(false) : [false, () => {}];
-        const showConsent = Boolean(settings.show_consent_checkbox);
-        const consentText = settings.consent_checkbox_text || 'I consent to the collection of my data to process this payment';
-
-        const children = [];
-
-        if (description) {
-            children.push(createElement(RawHTML, { key: 'desc' }, description));
-        }
-
-        if (showConsent) {
-            children.push(
-                createElement(
-                    'div',
-                    { key: 'consent-wrap', className: 'bank-transfer-consent-wrapper', style: { marginTop: '12px' } },
-                    createElement(
-                        'label',
-                        { style: { display: 'flex', alignItems: 'center', cursor: 'pointer', gap: '8px', fontSize: '14px' } },
-                        createElement('input', {
-                            type: 'checkbox',
-                            id: 'bank_transfer_consent',
-                            name: 'bank_transfer_consent',
-                            checked: consented,
-                            onChange: (e) => setConsented(e.target.checked)
-                        }),
-                        createElement('span', {}, consentText)
-                    )
-                )
-            );
-        }
-
-        return createElement(
-            'div',
-            { className: 'bank-transfer-description' },
-            children
-        );
-    };
-
     const methodConfig = {
         name: settings.id || 'bank_transfer',
         label,
         ariaLabel: label,
 
-        content: createElement(BankTransferContent),
+        content: createElement(
+            'div',
+            { className: 'bank-transfer-description' },
+            createElement(RawHTML, {}, description)
+        ),
 
         edit: createElement(
             'div',
