@@ -1,6 +1,9 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
 
+require_once plugin_dir_path(__FILE__) . 'config.php';
+require_once plugin_dir_path(__FILE__) . 'bank-transfer-payment-gateway-utils.php';
+
 use Automattic\WooCommerce\Blocks\Payments\Integrations\AbstractPaymentMethodType;
 
 class BANK_TRANSFER_Blocks_Gateway extends AbstractPaymentMethodType {
@@ -37,6 +40,7 @@ class BANK_TRANSFER_Blocks_Gateway extends AbstractPaymentMethodType {
 			'bank_transfer_loader' => plugin_dir_url(BANK_TRANSFER_PAYMENT_GATEWAY_FILE) . 'assets/images/loader.gif',
 			'bank_transfer_nonce'  => wp_create_nonce('bank_transfer_payment'),
 			'payment_method'       => $this->name,
+			'plugin_version'       => bank_transfer_get_plugin_version(),
 		]);
 
 		$blocks_js_path = plugin_dir_path(BANK_TRANSFER_PAYMENT_GATEWAY_FILE) . 'assets/js/bank-transfer-blocks.js';
@@ -77,6 +81,7 @@ class BANK_TRANSFER_Blocks_Gateway extends AbstractPaymentMethodType {
 			'title'       => sanitize_text_field($title),
 			'description' => wp_kses_post($description),
 			'supports'    => ['products'],
+			'plugin_version' => bank_transfer_get_plugin_version(),
 			'isActive'    => $this->is_active(),
 			'instructions'=> $this->settings['instructions'] ?? '',
 		];
