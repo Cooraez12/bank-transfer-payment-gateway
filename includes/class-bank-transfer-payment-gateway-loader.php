@@ -5,6 +5,7 @@ if (!defined('ABSPATH')) {
 
 // Include the configuration file
 require_once plugin_dir_path(__FILE__) . 'config.php';
+require_once plugin_dir_path(__FILE__) . 'bank-transfer-payment-gateway-utils.php';
 require_once plugin_dir_path(__FILE__) . 'class-bank-transfer-payment-state-engine.php';
 require_once plugin_dir_path(__FILE__) . 'class-bank-transfer-payment-logger.php';
 /**
@@ -283,6 +284,14 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 		}
 
 		$created = wc_get_order( $order_id );
+		if ( $created ) {
+			$version = bank_transfer_get_plugin_version();
+			if ( ! empty( $version ) ) {
+				$created->update_meta_data( '_bank_transfer_plugin_version', sanitize_text_field( $version ) );
+				$created->update_meta_data( 'bank_transfer_plugin_version', sanitize_text_field( $version ) );
+				$created->save();
+			}
+		}
 
 		Bank_Transfer_Payment_Gateway_Logger::info(
 			'Created order for block checkout',
@@ -399,6 +408,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 					'bank_transfer_nonce'  => wp_create_nonce('bank_transfer_payment'), 
 					'checkout_url'         => wc_get_checkout_url(),
 					'payment_method'       => 'bank_transfer',
+					'plugin_version'       => bank_transfer_get_plugin_version(),
 				]
 			);
 	
@@ -478,18 +488,16 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 	/**
 	 * BT-15: Rate limiting helper for public AJAX actions
 	 */
-	public function check_rate_limit($action, $max_requests = 60, $period = 60, $extra_key = '')
+	public function check_rate_limit($action, $max_requests = 15, $period = 60)
 	{
 		$ip = sanitize_text_field(wp_unslash($_SERVER['REMOTE_ADDR'] ?? 'unknown'));
-		$key_suffix = !empty($extra_key) ? '_' . $extra_key : '';
-		$transient_key = 'bt_rl_' . md5($action . '_' . $ip . $key_suffix);
+		$transient_key = 'bt_rl_' . md5($action . '_' . $ip);
 		$count = (int) get_transient($transient_key);
 
 		if ($count >= $max_requests) {
 			wp_send_json_error([
 				'message'      => 'Too many requests. Please slow down.',
-				'stop_polling' => false,
-				'rate_limited' => true,
+				'stop_polling' => true,
 			], 429);
 			wp_die();
 		}
@@ -534,8 +542,8 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 	{
 		if (plugin_basename(BANK_TRANSFER_PAYMENT_GATEWAY_FILE) === $file) {
 			$row_meta = [
-				'docs'    => '<a href="' . esc_url(apply_filters('bank_transfer_docs_url', 'https://pay.rt.app/docs')) . '" target="_blank">' . esc_html__('Documentation', 'bank-transfer-payment-gateway') . '</a>',
-				'support' => '<a href="' . esc_url(apply_filters('bank_transfer_support_url', 'https://pay.rt.app/contact-us')) . '" target="_blank">' . esc_html__('Support', 'bank-transfer-payment-gateway') . '</a>',
+				'docs'    => '<a href="' . esc_url(apply_filters('bank_transfer_docs_url', 'https://qa.rt.app/docs')) . '" target="_blank">' . esc_html__('Documentation', 'bank-transfer-payment-gateway') . '</a>',
+				'support' => '<a href="' . esc_url(apply_filters('bank_transfer_support_url', 'https://qa.rt.app/contact-us')) . '" target="_blank">' . esc_html__('Support', 'bank-transfer-payment-gateway') . '</a>',
 			];
 
 			$links = array_merge($links, $row_meta);
@@ -562,10 +570,11 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 	 */
 	public function bank_transfer_handle_check_payment_status_request($request)
 	{
+		$this->check_rate_limit('status_check', 30, 60);
+		check_ajax_referer('bank_transfer_payment', 'security');
+
 		// Sanitize and validate the order ID from $_POST
 		$order_id = isset($_POST['order_id']) ? intval(sanitize_text_field(wp_unslash($_POST['order_id']))) : null;
-		$this->check_rate_limit('status_check', 60, 60, $order_id ? (string) $order_id : '');
-		check_ajax_referer('bank_transfer_payment', 'security');
 		if (!$order_id || $order_id <= 0) {
 			wp_send_json_error(array('message' => esc_html__('Invalid order ID', 'bank-transfer-payment-gateway')), 400);
 		}
@@ -638,6 +647,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 					'payment_token'  => $payment_token,
 					'is_sandbox'     => $is_sandbox,
 					'api_public_key' => $public_key,
+					'api_secret'     => $secret_key,
 				]),
 				'headers'   => [
 					'Content-Type'  => 'application/json',
@@ -806,12 +816,11 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 	public function handle_popup_close()
 	{
 		check_ajax_referer('bank_transfer_payment', 'security');
+		$this->check_rate_limit('popup_close', 30, 60);
 
 		$order_id = isset($_POST['order_id'])
 			? intval(sanitize_text_field(wp_unslash($_POST['order_id'])))
 			: 0;
-
-		$this->check_rate_limit('popup_close', 60, 60, $order_id > 0 ? (string) $order_id : '');
 
 		$order_key = isset($_POST['order_key'])
 			? sanitize_text_field(wp_unslash($_POST['order_key']))
@@ -875,6 +884,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 					'payment_token'  => $payment_token,
 					'is_sandbox'     => $is_sandbox,
 					'api_public_key' => $public_key,
+					'api_secret'     => $secret_key,
 				]),
 				'headers'   => [
 					'Content-Type'  => 'application/json',
@@ -1057,7 +1067,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 			$redirect = null; // processing → no redirect
 		}
 
-		$stop_polling = in_array($state, ['failed', 'cancelled', 'expired'], true);
+		$stop_polling = in_array($state, ['success', 'failed', 'cancelled', 'expired'], true);
 
 		// -------------------------
 		// RESPONSE
@@ -1129,9 +1139,6 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 		$accountsData = [];
 		$first_public_key = '';
 
-		$settings = get_option('woocommerce_bank_transfer_settings', []);
-		$is_gateway_sandbox = isset($settings['sandbox']) && $settings['sandbox'] === 'yes';
-
 		foreach ($accounts as &$account) {
 			$isSandboxEnabled = isset($account['has_sandbox']) && $account['has_sandbox'] === 'on';
 
@@ -1143,7 +1150,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 					'secret_key'   => $account['live_secret_key'] ?? '',
 					'mode'         => 'live',
 				];
-				if (empty($first_public_key) && !$is_gateway_sandbox) {
+				if (empty($first_public_key)) {
 					$first_public_key = $account['live_public_key'];
 				}
 			}
@@ -1155,14 +1162,10 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 					'secret_key'   => $account['sandbox_secret_key'] ?? '',
 					'mode'         => 'sandbox',
 				];
-				if (empty($first_public_key) && $is_gateway_sandbox) {
+				if (empty($first_public_key)) {
 					$first_public_key = $account['sandbox_public_key'];
 				}
 			}
-		}
-
-		if (empty($first_public_key) && !empty($accountsData)) {
-			$first_public_key = $accountsData[0]['public_key'];
 		}
 
 		if (empty($accountsData)) {
@@ -1188,14 +1191,12 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 
 		$response_code = wp_remote_retrieve_response_code($response);
 		if ($response_code < 200 || $response_code >= 300) {
-			$err_body = wp_remote_retrieve_body($response);
 			Bank_Transfer_Payment_Gateway_Logger::warning(
 				'Sync API returned a non-2xx HTTP status. Sync aborted.',
 				array_merge($logger_context, [
 					'context' => [
 						'http_status' => $response_code,
 						'url'         => $url,
-						'response'    => $err_body,
 					],
 				])
 			);
@@ -1334,33 +1335,18 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 			return;
 		}
 
-		$settings = get_option('woocommerce_bank_transfer_settings', []);
-		$is_sandbox = isset($settings['sandbox']) && $settings['sandbox'] === 'yes';
-
-		// Find first available public key matching current mode
+		// Find first available public key
 		$public_key = '';
 
 		foreach ($accounts as $account) {
-			if ($is_sandbox && !empty($account['sandbox_public_key'])) {
-				$public_key = $account['sandbox_public_key'];
-				break;
-			}
-			if (!$is_sandbox && !empty($account['live_public_key'])) {
+			if (!empty($account['live_public_key'])) {
 				$public_key = $account['live_public_key'];
 				break;
 			}
-		}
 
-		if (empty($public_key)) {
-			foreach ($accounts as $account) {
-				if (!empty($account['sandbox_public_key'])) {
-					$public_key = $account['sandbox_public_key'];
-					break;
-				}
-				if (!empty($account['live_public_key'])) {
-					$public_key = $account['live_public_key'];
-					break;
-				}
+			if (!empty($account['sandbox_public_key'])) {
+				$public_key = $account['sandbox_public_key'];
+				break;
 			}
 		}
 
@@ -1383,7 +1369,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 			'valid_accounts'         => $sanitized_accounts,
 			'plugin_status'          => (int) $plugin_status,
 			'gateway_loaded'         => (int) $gateway_loaded,
-			'plugin_version'         => BANK_TRANSFER_PLUGIN_VERSION,
+			'plugin_version'         => bank_transfer_get_plugin_version(),
 			'wordpress_version'      => get_bloginfo('version'),
 			'woocommerce_version'    => get_option('woocommerce_version') ?: '',
 			'woocommerce_db_version' => get_option('woocommerce_db_version'),

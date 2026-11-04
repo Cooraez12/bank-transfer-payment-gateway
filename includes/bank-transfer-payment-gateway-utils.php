@@ -82,3 +82,25 @@ if (!function_exists('bank_transfer_add_unique_order_note')) {
         return true;
     }
 }
+
+if (!function_exists('bank_transfer_get_plugin_version')) {
+    /**
+     * Retrieve current plugin version dynamically from constant or plugin header.
+     *
+     * @return string
+     */
+    function bank_transfer_get_plugin_version() {
+        if (defined('BANK_TRANSFER_PLUGIN_VERSION') && !empty(BANK_TRANSFER_PLUGIN_VERSION)) {
+            return BANK_TRANSFER_PLUGIN_VERSION;
+        }
+
+        if (defined('BANK_TRANSFER_PAYMENT_GATEWAY_FILE') && function_exists('get_file_data')) {
+            $plugin_data = get_file_data(BANK_TRANSFER_PAYMENT_GATEWAY_FILE, ['Version' => 'Version'], 'plugin');
+            if (!empty($plugin_data['Version'])) {
+                return $plugin_data['Version'];
+            }
+        }
+
+        return '1.0.0';
+    }
+}
