@@ -23,14 +23,13 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_REST_API
 		// Initialize the logger
 		$this->logger = wc_get_logger();
 
-		// BT-13: Only add CORS headers for bank-transfer/v1 routes without breaking global WordPress REST handling
+		// BT-13: Only add CORS headers for bank-transfer/v1 routes without breaking global WordPress REST handling.
+		// Match strictly on the resolved REST route, anchored to our namespace. Never fall back to REQUEST_URI:
+		// a substring match on it lets /wp-json/anything?x=bank-transfer/v1 receive our headers and the OPTIONS exit.
 		add_filter('rest_pre_serve_request', function ($value, $result, $request) {
-			$route = ($request instanceof WP_REST_Request) ? $request->get_route() : '';
-			if (empty($route) && !empty($_SERVER['REQUEST_URI'])) {
-				$route = sanitize_text_field(wp_unslash($_SERVER['REQUEST_URI']));
-			}
+			$route = ($request instanceof WP_REST_Request) ? (string) $request->get_route() : '';
 
-			if (strpos($route, 'bank-transfer/v1') !== false || strpos($route, 'bank_transfer/v1') !== false) {
+			if ($route !== '' && preg_match('#^/bank[-_]transfer/v1(?:/|$)#', $route)) {
 				header('Access-Control-Allow-Origin: ' . BANK_TRANSFER_BASE_URL);
 				header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 				header('Access-Control-Allow-Headers: Authorization, Content-Type, X-WP-Nonce, X-Signature, X-Timestamp, X-API-Key, User-Agent, Accept');
@@ -126,7 +125,14 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_REST_API
 		$timestamp_header = $request->get_header('x-timestamp');
 
 		if (!empty($sig_header) && !empty($timestamp_header)) {
-			$timestamp_int = intval($timestamp_header);
+			// X-Timestamp must be a strict unsigned digit string (rejects "123abc", signs, floats, exponents).
+			$timestamp_header = trim((string) $timestamp_header);
+			if (!ctype_digit($timestamp_header) || strlen($timestamp_header) > 12) {
+				Bank_Transfer_Payment_Gateway_Logger::warning('Webhook timestamp malformed');
+				return false;
+			}
+
+			$timestamp_int = (int) $timestamp_header;
 			if (abs(time() - $timestamp_int) > 300) {
 				Bank_Transfer_Payment_Gateway_Logger::warning('Webhook timestamp expired', ['timestamp' => $timestamp_int]);
 				return false;

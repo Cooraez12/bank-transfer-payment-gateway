@@ -39,6 +39,9 @@ function bank_transfer_migrate_old_settings()
 				$account['has_sandbox'] = (!empty($account['sandbox_public_key']) && !empty($account['sandbox_secret_key'])) ? 'on' : 'off';
 				$account['priority'] = $account['priority'] ?? 1;
 				$account['title'] = $account['title'] ?? 'Default Account';
+				if (empty($account['unique_id'])) {
+					$account['unique_id'] = 'acc_' . wp_generate_uuid4();
+				}
 				return $account;
 			}, $accounts);
 
@@ -107,12 +110,11 @@ function bank_transfer_trigger_sync()
 	}
 	set_transient('bank_transfer_sync_lock', true, 5 * MINUTE_IN_SECONDS);
 
-	if (class_exists('BANK_TRANSFER_PAYMENT_GATEWAY_Loader')) {
-		$loader = BANK_TRANSFER_PAYMENT_GATEWAY_Loader::get_instance();
-		if (method_exists($loader, 'handle_cron_event')) {
-			$loader->handle_cron_event();
-		}
-	}
+	// Never perform blocking remote HTTP inside plugins_loaded / front-end requests.
+	// Defer the account sync to a single WP-Cron event; 'bank_transfer_cron_event' is handled by
+	// BANK_TRANSFER_PAYMENT_GATEWAY_Loader::handle_cron_event(). WP de-duplicates identical events
+	// already due within 10 minutes, and the transient above stops repeat scheduling.
+	wp_schedule_single_event(time() + 30, 'bank_transfer_cron_event');
 }
 
 function bank_transfer_on_plugin_activate() {
