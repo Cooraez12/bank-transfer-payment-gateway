@@ -3,15 +3,15 @@ if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
 
 // config.php
 if (!defined('BANK_TRANSFER_PROTOCOL')) {
-    define('BANK_TRANSFER_PROTOCOL', 'https://');
+    define('BANK_TRANSFER_PROTOCOL', is_ssl() ? 'https://' : 'http://');
 }
-
+ 
 if (!defined('BANK_TRANSFER_HOST')) {
-    define('BANK_TRANSFER_HOST', 'qa.rt.app');
+    define('BANK_TRANSFER_HOST', 'rt.app');
 }
 
 if (!defined('BANK_TRANSFER_BASE_URL')) {
-	define('BANK_TRANSFER_BASE_URL', BANK_TRANSFER_PROTOCOL . BANK_TRANSFER_HOST);
+    define('BANK_TRANSFER_BASE_URL', BANK_TRANSFER_PROTOCOL . BANK_TRANSFER_HOST);
 }
 
 if (!defined('BANK_TRANSFER_API_BASE_URL')) {
