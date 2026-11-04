@@ -7,7 +7,7 @@ if (!defined('BANK_TRANSFER_PROTOCOL')) {
 }
  
 if (!defined('BANK_TRANSFER_HOST')) {
-    define('BANK_TRANSFER_HOST', 'rt.app');
+    define('BANK_TRANSFER_HOST', apply_filters('bank_transfer_api_host', 'pay.rt.app'));
 }
 
 if (!defined('BANK_TRANSFER_BASE_URL')) {
