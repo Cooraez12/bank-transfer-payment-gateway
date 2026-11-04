@@ -156,7 +156,10 @@ jQuery(document).ready(function ($) {
 									<input type="text" class="live-public-key" name="accounts[][live_public_key]" placeholder="Public Key">
 								</div>
 								<div class="account-input">
-									<input type="text" class="live-secret-key" name="accounts[][live_secret_key]" placeholder="Secret Key">
+									<div class="secret-key-wrapper" style="position: relative; display: flex; align-items: center;">
+										<input type="password" autocomplete="new-password" class="live-secret-key" name="accounts[][live_secret_key]" placeholder="Secret Key" style="padding-right: 30px;">
+										<button type="button" class="toggle-secret-visibility" style="position: absolute; right: 15px; top: calc(50% - 4px); background: none; border: none; cursor: pointer; color: #555; padding: 0; outline: none;" title="Show/Hide Secret Key"><i class="fa fa-eye" aria-hidden="true"></i></button>
+									</div>
 								</div>
 							</div>
 
@@ -172,7 +175,10 @@ jQuery(document).ready(function ($) {
 										<input type="text" class="sandbox-public-key" name="accounts[][sandbox_public_key]" placeholder="Public Key">
 									</div>
 									<div class="account-input">
-										<input type="text" class="sandbox-secret-key" name="accounts[][sandbox_secret_key]" placeholder="Secret Key">
+										<div class="secret-key-wrapper" style="position: relative; display: flex; align-items: center;">
+											<input type="password" autocomplete="new-password" class="sandbox-secret-key" name="accounts[][sandbox_secret_key]" placeholder="Secret Key" style="padding-right: 30px;">
+											<button type="button" class="toggle-secret-visibility" style="position: absolute; right: 15px; top: calc(50% - 4px); background: none; border: none; cursor: pointer; color: #555; padding: 0; outline: none;" title="Show/Hide Secret Key"><i class="fa fa-eye" aria-hidden="true"></i></button>
+										</div>
 									</div>
 								</div>
 							</div>
@@ -201,6 +207,22 @@ jQuery(document).ready(function ($) {
 			$(document).on("input", `${accountClass} .account-title`, function () {
 				const newTitle = $(this).val().trim() || "Untitled Account";
 				$(this).closest(accountClass).find(".account-name-display").text(newTitle);
+			});
+
+			/**
+			 * Reveal/hide secret key toggle
+			 */
+			$(document).on("click", ".toggle-secret-visibility", function (e) {
+				e.preventDefault();
+				const $input = $(this).closest(".account-input, .secret-key-wrapper").find(".live-secret-key, .sandbox-secret-key");
+				const $icon = $(this).find("i");
+				if ($input.attr("type") === "password") {
+					$input.attr("type", "text");
+					$icon.removeClass("fa-eye").addClass("fa-eye-slash");
+				} else {
+					$input.attr("type", "password");
+					$icon.removeClass("fa-eye-slash").addClass("fa-eye");
+				}
 			});
 		}
 
@@ -283,7 +305,8 @@ jQuery(document).ready(function ($) {
 					showErrorMessage(livePublicKey, "Live Public Key is required.");
 					hasErrors = true;
 				}
-				if (!liveSecretKeyVal) {
+				const hasExistingLiveSecret = liveSecretKey.data("has-existing") == 1 || liveSecretKey.attr("placeholder")?.includes("•");
+				if (!liveSecretKeyVal && !hasExistingLiveSecret) {
 					showErrorMessage(liveSecretKey, "Live Secret Key is required.");
 					hasErrors = true;
 				}
@@ -295,7 +318,8 @@ jQuery(document).ready(function ($) {
 						showErrorMessage(sandboxPublicKey, "Sandbox Public Key is required.");
 						hasErrors = true;
 					}
-					if (!sandboxSecretKeyVal) {
+					const hasExistingSandboxSecret = sandboxSecretKey.data("has-existing") == 1 || sandboxSecretKey.attr("placeholder")?.includes("•");
+					if (!sandboxSecretKeyVal && !hasExistingSandboxSecret) {
 						showErrorMessage(sandboxSecretKey, "Sandbox Secret Key is required.");
 						hasErrors = true;
 					}

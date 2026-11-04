@@ -94,8 +94,17 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_REST_API
 			return false;
 		}
 
+		if (!$order || !is_a($order, 'WC_Order')) {
+			return false;
+		}
+
 		$order_public_key = $order->get_meta('_bank_transfer_public_key');
-		$valid_secrets    = [];
+		if (empty($order_public_key)) {
+			Bank_Transfer_Payment_Gateway_Logger::warning('Webhook rejected: order has no public key', ['order_id' => $order->get_id()]);
+			return false;
+		}
+
+		$valid_secrets = [];
 
 		foreach ($accounts_data as $account) {
 			if (!is_array($account)) {
@@ -109,14 +118,14 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_REST_API
 				continue;
 			}
 
-			if (!empty($order_public_key) && $pub === $order_public_key) {
+			if ($pub === $order_public_key) {
 				$valid_secrets = [$sec];
 				break;
 			}
-			$valid_secrets[] = $sec;
 		}
 
 		if (empty($valid_secrets)) {
+			Bank_Transfer_Payment_Gateway_Logger::warning('Webhook rejected: no matching account found for order public key', ['order_id' => $order->get_id()]);
 			return false;
 		}
 
@@ -246,23 +255,13 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_REST_API
 			], 405);
 		}
 
-		if ($order_id <= 0) {
-			return new WP_REST_Response([
-				'success' => false,
-				'message' => 'Invalid ID'
-			], 400);
-		}
-
-		$order = wc_get_order($order_id);
-		if (!$order || $order->get_payment_method() !== 'bank_transfer') {
-			return new WP_REST_Response([
-				'success' => false,
-				'message' => 'Order not found'
-			], 404);
-		}
-
-		// BT-05: Authenticate webhook strictly
-		if (!$this->bank_transfer_verify_webhook($request, $order)) {
+		$order = ($order_id > 0) ? wc_get_order($order_id) : false;
+		if (
+			$order_id <= 0 ||
+			!$order ||
+			$order->get_payment_method() !== 'bank_transfer' ||
+			!$this->bank_transfer_verify_webhook($request, $order)
+		) {
 			return new WP_REST_Response([
 				'success'    => false,
 				'error_code' => 'INVALID_API_KEY',
@@ -270,9 +269,9 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_REST_API
 			], 401);
 		}
 
-		// BT-05: Check that pay_id matches stored order token if both exist
+		// BT-05: Mandatory check that pay_id matches stored order token
 		$stored_pay_id = $order->get_meta('_bank_transfer_pay_id');
-		if (!empty($stored_pay_id) && !empty($pay_id) && !hash_equals($stored_pay_id, $pay_id)) {
+		if (empty($pay_id) || empty($stored_pay_id) || !hash_equals($stored_pay_id, $pay_id)) {
 			Bank_Transfer_Payment_Gateway_Logger::warning("Webhook Pay ID mismatch for Order #{$order_id}", [
 				'stored'   => $stored_pay_id,
 				'received' => $pay_id,
@@ -283,37 +282,47 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_REST_API
 			], 400);
 		}
 
-		// BT-05: Check amount if provided in webhook payload
-		if (isset($data['amount']) && is_numeric($data['amount'])) {
-			$webhook_amount = floatval($data['amount']);
-			$order_amount   = floatval($order->get_total());
-			if (abs($webhook_amount - $order_amount) > 0.01) {
-				Bank_Transfer_Payment_Gateway_Logger::warning("Webhook amount mismatch for Order #{$order_id}", [
-					'order_amount'   => $order_amount,
-					'webhook_amount' => $webhook_amount,
-				]);
-				return new WP_REST_Response([
-					'success' => false,
-					'message' => 'Amount mismatch.'
-				], 400);
-			}
+		// BT-05: Mandatory amount check
+		if (!isset($data['amount']) || !is_numeric($data['amount'])) {
+			return new WP_REST_Response([
+				'success' => false,
+				'message' => 'Amount required.'
+			], 400);
 		}
 
-		// BT-05: Check currency if provided in webhook payload
+		$webhook_amount = floatval($data['amount']);
+		$order_amount   = floatval($order->get_total());
+		if (abs($webhook_amount - $order_amount) > 0.01) {
+			Bank_Transfer_Payment_Gateway_Logger::warning("Webhook amount mismatch for Order #{$order_id}", [
+				'order_amount'   => $order_amount,
+				'webhook_amount' => $webhook_amount,
+			]);
+			return new WP_REST_Response([
+				'success' => false,
+				'message' => 'Amount mismatch.'
+			], 400);
+		}
+
+		// BT-05: Mandatory currency check
 		$curr_code = $data['curr_code'] ?? ($data['currency'] ?? '');
-		if (!empty($curr_code)) {
-			$webhook_curr = strtoupper(trim(sanitize_text_field($curr_code)));
-			$order_curr   = strtoupper(trim($order->get_currency()));
-			if ($webhook_curr !== $order_curr) {
-				Bank_Transfer_Payment_Gateway_Logger::warning("Webhook currency mismatch for Order #{$order_id}", [
-					'order_currency'   => $order_curr,
-					'webhook_currency' => $webhook_curr,
-				]);
-				return new WP_REST_Response([
-					'success' => false,
-					'message' => 'Currency mismatch.'
-				], 400);
-			}
+		if (empty($curr_code)) {
+			return new WP_REST_Response([
+				'success' => false,
+				'message' => 'Currency required.'
+			], 400);
+		}
+
+		$webhook_curr = strtoupper(trim(sanitize_text_field($curr_code)));
+		$order_curr   = strtoupper(trim($order->get_currency()));
+		if ($webhook_curr !== $order_curr) {
+			Bank_Transfer_Payment_Gateway_Logger::warning("Webhook currency mismatch for Order #{$order_id}", [
+				'order_currency'   => $order_curr,
+				'webhook_currency' => $webhook_curr,
+			]);
+			return new WP_REST_Response([
+				'success' => false,
+				'message' => 'Currency mismatch.'
+			], 400);
 		}
 
 		// -------------------------
