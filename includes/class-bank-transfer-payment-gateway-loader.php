@@ -1138,6 +1138,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 
 		$accountsData = [];
 		$first_public_key = '';
+		$first_secret_key = '';
 
 		foreach ($accounts as &$account) {
 			$isSandboxEnabled = isset($account['has_sandbox']) && $account['has_sandbox'] === 'on';
@@ -1147,11 +1148,11 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 				$accountsData[] = [
 					'account_name' => $account['title'] ?? '',
 					'public_key'   => $account['live_public_key'],
-					'secret_key'   => $account['live_secret_key'] ?? '',
 					'mode'         => 'live',
 				];
 				if (empty($first_public_key)) {
 					$first_public_key = $account['live_public_key'];
+					$first_secret_key = $account['live_secret_key'] ?? '';
 				}
 			}
 
@@ -1159,11 +1160,11 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 				$accountsData[] = [
 					'account_name' => $account['title'] ?? '',
 					'public_key'   => $account['sandbox_public_key'],
-					'secret_key'   => $account['sandbox_secret_key'] ?? '',
 					'mode'         => 'sandbox',
 				];
 				if (empty($first_public_key)) {
 					$first_public_key = $account['sandbox_public_key'];
+					$first_secret_key = $account['sandbox_secret_key'] ?? '';
 				}
 			}
 		}
@@ -1174,12 +1175,22 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 		}
 
 		$url = esc_url($this->get_api_url('/sync-account-status'));
+		$body = wp_json_encode(['accounts' => $accountsData]);
+		$headers = [
+			'Content-Type'  => 'application/json',
+			'Authorization' => 'Bearer ' . sanitize_text_field($first_public_key),
+		];
+
+		if (!empty($first_secret_key)) {
+			$timestamp = time();
+			$signature = hash_hmac('sha256', $timestamp . '.' . $body, $first_secret_key);
+			$headers['X-Signature'] = $signature;
+			$headers['X-Timestamp'] = (string) $timestamp;
+		}
+
 		$response = wp_remote_post($url, [
-			'headers' => [
-				'Content-Type'  => 'application/json',
-				'Authorization' => 'Bearer ' . sanitize_text_field($first_public_key),
-			],
-			'body'      => wp_json_encode(['accounts' => $accountsData]),
+			'headers'   => $headers,
+			'body'      => $body,
 			'timeout'   => 15,
 			'sslverify' => true,
 		]);
