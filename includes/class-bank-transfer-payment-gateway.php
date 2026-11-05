@@ -1530,6 +1530,14 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					$order->update_meta_data('_bank_transfer_active_pay_id', $pay_id);
 					$order->update_meta_data('_bank_transfer_payment_finalized', false);
 					$order->update_meta_data('_bank_transfer_public_key', sanitize_text_field($public_key));
+
+					// A new link starts a new payment cycle. A state closed by an
+					// earlier link (failed / cancelled / expired) must not block the
+					// RT backend webhook for this one; a paid order never gets here.
+					$previous_state = $order->get_meta('_bank_transfer_state');
+					if (in_array($previous_state, ['failed', 'cancelled', 'expired'], true)) {
+						$order->update_meta_data('_bank_transfer_state', 'pending');
+					}
 					$order->save();
 				}
 

@@ -328,6 +328,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_REST_API
 		// -------------------------
 		// 3. ENGINE CALL (WEBHOOK ONLY)
 		// -------------------------
+		$result = null;
 		if (!empty($api_order_status)) {
 			$result = BANK_TRANSFER_PAYMENT_ENGINE::handle_event(
 				$order_id,
@@ -382,9 +383,15 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_REST_API
 			$log_context
 		);
 
+		// The resolved state and engine outcome are echoed so the RT backend's
+		// sync log can show what the shop did with the webhook (it treats any
+		// 2xx as acknowledged and records this answer beside it).
 		return new WP_REST_Response([
-			'success' => $is_success,
-			'message' => $message
+			'success'       => $is_success,
+			'message'       => $message,
+			'state'         => $state,
+			'order_status'  => $wc_status,
+			'engine_reason' => is_array($result) ? ($result['reason'] ?? null) : null,
 		], 200);
 	}
 }
