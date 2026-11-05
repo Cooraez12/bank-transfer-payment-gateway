@@ -6,7 +6,7 @@ class BANK_TRANSFER_PAYMENT_ENGINE
     const LOCK_TTL  = 12;
     const EVENT_TTL = 86400;
 
-    
+
     /* =========================================================
      * ENTRY POINT
      * ========================================================= */
@@ -50,6 +50,22 @@ class BANK_TRANSFER_PAYMENT_ENGINE
             }
 
             $can_transition = self::can_transition($current_state, $new_state);
+
+            /**
+             * A verified successful payment must always be able to settle an order
+             * that is still waiting for money. The engine state can lag behind the
+             * backend (pending / on-hold / checkout-draft / processing / failed) or
+             * record a closed attempt (cancelled / expired) while the transfer still
+             * arrived afterwards. In every one of those cases the money is in the
+             * merchant account, so WooCommerce has to reflect it.
+             */
+            if ($new_state === 'success') {
+                $can_transition = in_array(
+                    $current_state,
+                    ['pending', 'on-hold', 'checkout-draft', 'processing', 'failed', 'cancelled', 'expired'],
+                    true
+                );
+            }
 
             if (!$can_transition) {
                 Bank_Transfer_Payment_Gateway_Logger::warning('Refused invalid order state transition.', [
@@ -161,7 +177,14 @@ class BANK_TRANSFER_PAYMENT_ENGINE
 
         $last_lock = $order->get_meta('_bank_transfer_state_lock');
 
-        if ($last_lock === $state_lock_key) {
+        // The lock only short-circuits a repeat of an event that already reached
+        // WooCommerce. A 'success' lock on an order that is still unpaid means the
+        // earlier attempt never completed (request died, status update failed), so
+        // it must be allowed through again.
+        if (
+            $last_lock === $state_lock_key &&
+            !($state === 'success' && $order->has_status(['pending', 'on-hold', 'failed', 'cancelled', 'checkout-draft']))
+        ) {
             return;
         }
 
@@ -175,9 +198,19 @@ class BANK_TRANSFER_PAYMENT_ENGINE
             default      => null
         };
 
-        if (!$wc_status) return;
-
-        $order->update_status($wc_status, '');
+        if ($wc_status) {
+            if ($state === 'success') {
+                // payment_complete() records the transaction id and paid date,
+                // reduces stock and moves the order to processing/completed the
+                // WooCommerce way. Then honour the configured success status.
+                $order->payment_complete($payment_token);
+                if ($order->get_status() !== $wc_status) {
+                    $order->update_status($wc_status, '');
+                }
+            } else {
+                $order->update_status($wc_status, '');
+            }
+        }
 
         $order->update_meta_data('_bank_transfer_state', $state);
         $order->update_meta_data('_bank_transfer_last_event', $event_type);
@@ -189,6 +222,8 @@ class BANK_TRANSFER_PAYMENT_ENGINE
 
         if ($state === 'success') {
             $order->update_meta_data('_bank_transfer_payment_success', 'yes');
+            $order->update_meta_data('_bank_transfer_payment_finalized', true);
+            $order->update_meta_data('_bank_transfer_paid_amount', (float) $order->get_total());
         }
 
         $order->save();
@@ -359,7 +394,9 @@ class BANK_TRANSFER_PAYMENT_ENGINE
         $source = match ($event_type) {
             'popup_close'    => 'Customer Return from Payment Page',
             'redirect'       => 'Customer Redirect',
+            'redirect_check' => 'Customer Status Check',
             'webhook_update' => 'Webhook',
+            'api_sync'       => 'Automatic Status Check',
             default          => 'System'
         };
 
@@ -394,8 +431,10 @@ class BANK_TRANSFER_PAYMENT_ENGINE
             ?? $payload['order_status']
             ?? null;
 
+        $status = is_string($status) && $status !== '' ? strtolower(trim($status)) : null;
+
         return match ($status) {
-            'success', 'paid', 'completed'  => 'success',
+            'success', 'paid', 'completed', 'settled', 'succeeded' => 'success',
             'failed'                        => 'failed',
             'cancelled', 'canceled'        => 'cancelled',
             'expired'                      => 'expired',
@@ -422,17 +461,22 @@ class BANK_TRANSFER_PAYMENT_ENGINE
     private static function can_transition($from, $to)
     {
         if ($from === 'success') return false;
+        if ($from === $to) return true;
 
         // 'expired' and 'cancelled' are reported by the RT backend webhook once
         // a link dies unpaid or the payer abandons an open attempt. 'processing'
         // here also covers a backend 'pending' attempt (see resolve_state), so
-        // both may legitimately follow it.
+        // both may legitimately follow it. A bank transfer can still settle after
+        // the attempt was closed on the portal, so 'success' stays reachable from
+        // every non-final state (handle_event enforces the same rule).
         $map = [
-            'pending'    => ['cancelled', 'processing', 'success', 'failed', 'expired'],
-            'failed'     => ['failed', 'success', 'processing', 'cancelled', 'expired'],
-            'processing' => ['processing', 'success', 'failed', 'cancelled', 'expired'],
-            'cancelled'  => [],
-            'expired'    => [],
+            'pending'        => ['pending', 'cancelled', 'processing', 'success', 'failed', 'expired', 'on-hold'],
+            'on-hold'        => ['pending', 'cancelled', 'processing', 'success', 'failed', 'expired', 'on-hold'],
+            'checkout-draft' => ['pending', 'cancelled', 'processing', 'success', 'failed', 'expired', 'on-hold'],
+            'failed'         => ['failed', 'success', 'processing', 'cancelled', 'expired', 'pending'],
+            'processing'     => ['processing', 'success', 'failed', 'cancelled', 'expired'],
+            'cancelled'      => ['cancelled', 'success', 'processing', 'pending'],
+            'expired'        => ['expired', 'success', 'processing', 'pending'],
         ];
 
         return in_array($to, $map[$from] ?? [], true);
@@ -443,7 +487,22 @@ class BANK_TRANSFER_PAYMENT_ENGINE
      * ========================================================= */
     private static function get_state($order)
     {
-        return $order->get_meta('_bank_transfer_state') ?: 'pending';
+        $wc_status = $order->get_status();
+
+        // An order cancelled in WooCommerce (admin or customer) is cancelled for the
+        // engine too, whatever the last recorded engine state was.
+        if ($wc_status === 'cancelled') {
+            return 'cancelled';
+        }
+
+        $meta_state = $order->get_meta('_bank_transfer_state');
+        if (!empty($meta_state)) {
+            return $meta_state;
+        }
+
+        // No engine state recorded yet: fall back to the WooCommerce status so an
+        // 'on-hold' or 'checkout-draft' order is still a valid starting point.
+        return !empty($wc_status) ? $wc_status : 'pending';
     }
 
     /* =========================================================
@@ -497,18 +556,19 @@ class BANK_TRANSFER_PAYMENT_ENGINE
     public static function resolve_final_state($order, $api_status = null)
     {
         // 1. PRIMARY: engine state (validated)
-        $state = $order->get_meta('_bank_transfer_state');
+        $state = self::normalize_state(self::get_state($order));
 
         if (!empty($state) && in_array($state, ['pending','processing','success','failed','cancelled','expired'], true)) {
             return $state;
         }
 
         // 2. SAFETY: API status (current response)
-        if (!empty($api_status)) {
-            $mapped = match ($api_status) {
-                'success', 'paid', 'completed' => 'success',
+        if (!empty($api_status) && is_string($api_status)) {
+            $mapped = match (strtolower(trim($api_status))) {
+                'success', 'paid', 'completed', 'settled', 'succeeded' => 'success',
                 'failed' => 'failed',
                 'cancelled', 'canceled' => 'cancelled',
+                'expired' => 'expired',
                 'processing', 'pending' => 'processing',
                 default => null
             };
