@@ -201,8 +201,29 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_REST_API
 		$data = isset($params['api_data']) && is_array($params['api_data']) ? $params['api_data'] : $params;
 
 		$order_id         = intval($data['order_id'] ?? ($params['order_id'] ?? 0));
-		$api_order_status = trim(trim(sanitize_text_field($data['order_status'] ?? ($params['order_status'] ?? ''))), '"\'');
-		$pay_id           = trim(trim(sanitize_text_field($data['pay_id'] ?? ($params['pay_id'] ?? ''))), '"\'');
+		// The backend has used more than one field name for the same two values;
+		// accept them all so a status push is never dropped on a rename. A bare
+		// top-level "status" is deliberately ignored (it describes the call).
+		$api_order_status = sanitize_text_field((string) (
+			$data['order_status']
+			?? ($data['payment_status']
+			?? ($data['transaction_status']
+			?? ($params['order_status']
+			?? ($params['payment_status'] ?? ''))))
+		));
+		$api_order_status = strtolower(trim(trim($api_order_status), '"\''));
+		if ($api_order_status === '' && isset($data['settled']) && filter_var($data['settled'], FILTER_VALIDATE_BOOLEAN)) {
+			$api_order_status = 'success';
+		}
+
+		$pay_id = sanitize_text_field((string) (
+			$data['pay_id']
+			?? ($data['uuid']
+			?? ($data['payment_token']
+			?? ($params['pay_id']
+			?? ($params['uuid'] ?? ''))))
+		));
+		$pay_id = trim(trim($pay_id), '"\'');
 
 		Bank_Transfer_Payment_Gateway_Logger::info(
 			"Bank Transfer API HIT | Method: {$method} | Order #{$order_id} | Status: {$api_order_status} | Pay ID: {$pay_id}",
@@ -233,6 +254,14 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_REST_API
 			// Safari / session tracking
 			if (isset(WC()->session)) {
 				WC()->session->set('order_awaiting_payment', $order->get_id());
+			}
+
+			// The customer is back from the payment portal. Confirm the payment with
+			// the backend right now so the order-received page shows the settled
+			// state even when the webhook has not arrived yet.
+			if ($order->has_status(['pending', 'on-hold']) && class_exists('BANK_TRANSFER_PAYMENT_GATEWAY_Loader')) {
+				BANK_TRANSFER_PAYMENT_GATEWAY_Loader::get_instance()->sync_single_order_status($order);
+				$order = wc_get_order($order->get_id());
 			}
 
 			$wc_status = $order->get_status();
@@ -269,11 +298,35 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_REST_API
 			], 401);
 		}
 
-		// BT-05: Mandatory check that pay_id matches stored order token
-		$stored_pay_id = $order->get_meta('_bank_transfer_pay_id');
-		if (empty($pay_id) || empty($stored_pay_id) || !hash_equals($stored_pay_id, $pay_id)) {
+		// BT-05: Mandatory check that pay_id matches a payment id this order is
+		// known under (order meta, active id, or the stored payment link row).
+		// An order with no recorded id at all (older order, create-link response
+		// without pay_id) adopts the webhook's id: the request is authenticated
+		// with the order's own account secret and amount/currency are verified below.
+		if (empty($pay_id)) {
+			Bank_Transfer_Payment_Gateway_Logger::warning("Webhook missing Pay ID for Order #{$order_id}");
+			return new WP_REST_Response([
+				'success' => false,
+				'message' => 'Payment ID required.'
+			], 400);
+		}
+
+		$loader    = class_exists('BANK_TRANSFER_PAYMENT_GATEWAY_Loader') ? BANK_TRANSFER_PAYMENT_GATEWAY_Loader::get_instance() : null;
+		$known_ids = $loader
+			? $loader->bank_transfer_known_order_pay_ids($order)
+			: array_values(array_filter([(string) $order->get_meta('_bank_transfer_pay_id')]));
+
+		$id_matches = false;
+		foreach ($known_ids as $known_id) {
+			if (hash_equals((string) $known_id, $pay_id)) {
+				$id_matches = true;
+				break;
+			}
+		}
+
+		if (!$id_matches && !empty($known_ids)) {
 			Bank_Transfer_Payment_Gateway_Logger::warning("Webhook Pay ID mismatch for Order #{$order_id}", [
-				'stored'   => $stored_pay_id,
+				'stored'   => $known_ids,
 				'received' => $pay_id,
 			]);
 			return new WP_REST_Response([
@@ -282,15 +335,25 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_REST_API
 			], 400);
 		}
 
+		if (empty($known_ids)) {
+			Bank_Transfer_Payment_Gateway_Logger::info("Webhook supplied Pay ID for Order #{$order_id}, which had none recorded; adopting it.", [
+				'received' => $pay_id,
+			]);
+			$order->update_meta_data('_bank_transfer_pay_id', $pay_id);
+			$order->save();
+		}
+
+
 		// BT-05: Mandatory amount check
-		if (!isset($data['amount']) || !is_numeric($data['amount'])) {
+		$raw_amount = $data['amount'] ?? ($data['total_amount'] ?? null);
+		if ($raw_amount === null || !is_numeric($raw_amount)) {
 			return new WP_REST_Response([
 				'success' => false,
 				'message' => 'Amount required.'
 			], 400);
 		}
 
-		$webhook_amount = floatval($data['amount']);
+		$webhook_amount = floatval($raw_amount);
 		$order_amount   = floatval($order->get_total());
 		if (abs($webhook_amount - $order_amount) > 0.01) {
 			Bank_Transfer_Payment_Gateway_Logger::warning("Webhook amount mismatch for Order #{$order_id}", [
