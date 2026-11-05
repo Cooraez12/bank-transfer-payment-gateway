@@ -16,10 +16,20 @@ class BANK_TRANSFER_Blocks_Gateway extends AbstractPaymentMethodType {
 	}
 
 	public function is_active() {
-		return (
-			isset($this->settings['enabled']) &&
-			$this->settings['enabled'] === 'yes'
-		);
+		if (
+			!isset($this->settings['enabled']) ||
+			$this->settings['enabled'] !== 'yes'
+		) {
+			return false;
+		}
+
+		$gateways = WC()->payment_gateways ? WC()->payment_gateways->payment_gateways() : [];
+		$gateway  = $gateways[$this->name] ?? null;
+		if ($gateway && method_exists($gateway, 'is_available')) {
+			return $gateway->is_available();
+		}
+
+		return true;
 	}
 
 	public function get_payment_method_script_handles() {
@@ -76,13 +86,15 @@ class BANK_TRANSFER_Blocks_Gateway extends AbstractPaymentMethodType {
 			}
 		}
 
+		$is_active = $this->is_active();
 		return [
 			'id'          => $this->name,
 			'title'       => sanitize_text_field($title),
 			'description' => wp_kses_post($description),
 			'supports'    => ['products'],
 			'plugin_version' => bank_transfer_get_plugin_version(),
-			'isActive'    => $this->is_active(),
+			'isActive'    => $is_active,
+			'can_pay'     => $is_active,
 			'instructions'=> $this->settings['instructions'] ?? '',
 		];
 	}

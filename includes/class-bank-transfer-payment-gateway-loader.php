@@ -1148,6 +1148,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 				$accountsData[] = [
 					'account_name' => $account['title'] ?? '',
 					'public_key'   => $account['live_public_key'],
+					'secret_key'   => $account['live_secret_key'] ?? '',
 					'mode'         => 'live',
 				];
 				if (empty($first_public_key)) {
@@ -1156,15 +1157,28 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 				}
 			}
 
-			if ($isSandboxEnabled && !empty($account['sandbox_public_key'])) {
-				$accountsData[] = [
-					'account_name' => $account['title'] ?? '',
-					'public_key'   => $account['sandbox_public_key'],
-					'mode'         => 'sandbox',
-				];
-				if (empty($first_public_key)) {
-					$first_public_key = $account['sandbox_public_key'];
-					$first_secret_key = $account['sandbox_secret_key'] ?? '';
+			if ($isSandboxEnabled) {
+				if (!empty($account['sandbox_public_key']) && !empty($account['sandbox_secret_key'])) {
+					$accountsData[] = [
+						'account_name' => $account['title'] ?? '',
+						'public_key'   => $account['sandbox_public_key'],
+						'secret_key'   => $account['sandbox_secret_key'] ?? '',
+						'mode'         => 'sandbox',
+					];
+					if (empty($first_public_key)) {
+						$first_public_key = $account['sandbox_public_key'];
+						$first_secret_key = $account['sandbox_secret_key'] ?? '';
+					}
+				} else {
+					if (($account['sandbox_status'] ?? '') !== 'invalid') {
+						$account['sandbox_status'] = 'invalid';
+						$updated = true;
+					}
+				}
+			} else {
+				if (($account['sandbox_status'] ?? '') !== 'inactive') {
+					$account['sandbox_status'] = 'inactive';
+					$updated = true;
 				}
 			}
 		}

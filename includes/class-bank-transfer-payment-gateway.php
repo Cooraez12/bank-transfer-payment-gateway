@@ -565,7 +565,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			$sandbox_secret_key = $account['sandbox_secret_key'] ?? '';
 			$has_sandbox         = isset($account['has_sandbox']) && $account['has_sandbox'] === 'on';
 			$live_status        = $account['live_status'] ?? 'Active';
-			$sandbox_status     = $has_sandbox ? ($account['sandbox_status'] ?? 'Active') : '';
+			$sandbox_status     = $has_sandbox ? ($account['sandbox_status'] ?? 'unknown') : 'inactive';
 			$unique_id          = $account['unique_id'] ?? '';
 			if (empty($unique_id)) {
 				// Back-fill missing IDs here, on save, rather than while rendering the settings page.
@@ -585,8 +585,14 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			if (empty($live_secret_key) && $existing_account && !empty($existing_account['live_secret_key'])) {
 				$live_secret_key = $existing_account['live_secret_key'];
 			}
-			if (empty($sandbox_secret_key) && $existing_account && !empty($existing_account['sandbox_secret_key'])) {
-				$sandbox_secret_key = $existing_account['sandbox_secret_key'];
+			if ($has_sandbox) {
+				if (empty($sandbox_secret_key) && $existing_account && !empty($existing_account['sandbox_secret_key']) && !empty($sandbox_public_key)) {
+					$sandbox_secret_key = $existing_account['sandbox_secret_key'];
+				}
+			} else {
+				$sandbox_public_key = '';
+				$sandbox_secret_key = '';
+				$sandbox_status     = 'inactive';
 			}
 
 			if (empty($account_title) && empty($live_public_key) && empty($live_secret_key) && empty($sandbox_public_key) && empty($sandbox_secret_key)) {
@@ -597,6 +603,13 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				/* translators: %s: Account title */
 				$errors[] = sprintf(__('Account "%s": Title, Live Public Key, and Live Secret Key are required.', 'bank-transfer-payment-gateway'), $account_title);
 				Bank_Transfer_Payment_Gateway_Logger::info("Validation failed: missing required fields for account '{$account_title}'");
+				continue;
+			}
+
+			if ($has_sandbox && (empty($sandbox_public_key) || empty($sandbox_secret_key))) {
+				/* translators: %s: Account title */
+				$errors[] = sprintf(__('Account "%s": Sandbox Public Key and Sandbox Secret Key are required when sandbox is enabled.', 'bank-transfer-payment-gateway'), $account_title);
+				Bank_Transfer_Payment_Gateway_Logger::info("Validation failed: missing sandbox keys for account '{$account_title}'");
 				continue;
 			}
 
@@ -1905,7 +1918,8 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		// =====================================================
 		// STEP 5: REQUEST FINGERPRINT (REAL FIX)
 		// =====================================================
-		static $executed = false;
+		static $last_fingerprint = null;
+		static $last_selected    = null;
 
 		$fingerprint = md5(wp_json_encode([
 			'flow'   => $flow,
@@ -1915,11 +1929,12 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			'blocks' => $is_blocks
 		]));
 
-		if ($executed === $fingerprint) {
+		if ($last_fingerprint === $fingerprint && $last_selected !== null) {
+			if (!$last_selected) {
+				return $this->hide_gateway($available_gateways, $gateway_id);
+			}
 			return $available_gateways;
 		}
-
-		$executed = $fingerprint;
 
 		// =====================================================
 		// STEP 6: LOAD ACCOUNTS
@@ -1998,6 +2013,9 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		// =====================================================
 		// STEP 11: RETURN RESULT
 		// =====================================================
+		$last_fingerprint = $fingerprint;
+		$last_selected    = !empty($selected);
+
 		$this->selected_account_for_display = $selected;
 
 		if (!$selected) {
@@ -2165,17 +2183,33 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$valid_accounts = [];
 		foreach ($accounts as $i => $account) {
 			if ($this->sandbox) {
-				$status   = strtolower($account['sandbox_status'] ?? '');
-				$has_keys = !empty($account['sandbox_public_key']) && !empty($account['sandbox_secret_key']);
-				if ($status === 'active' && $has_keys) $valid_accounts[] = $account;
+				$has_sandbox = isset($account['has_sandbox']) && $account['has_sandbox'] === 'on';
+				$status      = strtolower($account['sandbox_status'] ?? '');
+				$has_keys    = !empty($account['sandbox_public_key']) && !empty($account['sandbox_secret_key']);
+				if ($has_sandbox && $status === 'active' && $has_keys) {
+					$valid_accounts[] = $account;
+				}
 			} else {
 				$status   = strtolower($account['live_status'] ?? '');
 				$has_keys = !empty($account['live_public_key']) && !empty($account['live_secret_key']);
-				if ($status === 'active' && $has_keys) $valid_accounts[] = $account;
+				if ($status === 'active' && $has_keys) {
+					$valid_accounts[] = $account;
+				}
 			}
 		}
 		$this->accounts = $valid_accounts;
 		return $valid_accounts;
+	}
+
+	public function is_available() {
+		$is_available = ('yes' === $this->enabled);
+
+		if (!$is_available) {
+			return false;
+		}
+
+		$accounts = $this->get_all_accounts();
+		return !empty($accounts);
 	}
 
 	/**
