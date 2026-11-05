@@ -100,8 +100,6 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 	 * ───────────────────────────────────────────────────────────────────────────
 	 */
 	function handle_bank_transfer_gateway_ajax(){
-		$this->check_rate_limit('block_ajax', 20, 60);
-
 		// Nonce verification
 		$nonce = isset($_POST['nonce'])
 			? sanitize_text_field(wp_unslash($_POST['nonce']))
@@ -111,6 +109,8 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 			wp_send_json(['result' => 'fail', 'error' => 'Security check failed.']);
 			die;
 		}
+
+		$this->check_rate_limit('block_ajax', 20, 60);
 
 		// Pull the already-initialised gateway from the WC registry.
 		// Never use `new BANK_TRANSFER_PAYMENT_GATEWAY()` here — see note above.
@@ -570,8 +570,8 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 	 */
 	public function bank_transfer_handle_check_payment_status_request($request)
 	{
-		$this->check_rate_limit('status_check', 30, 60);
 		check_ajax_referer('bank_transfer_payment', 'security');
+		$this->check_rate_limit('status_check', 30, 60);
 
 		// Sanitize and validate the order ID from $_POST
 		$order_id = isset($_POST['order_id']) ? intval(sanitize_text_field(wp_unslash($_POST['order_id']))) : null;
@@ -1148,6 +1148,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 				$accountsData[] = [
 					'account_name' => $account['title'] ?? '',
 					'public_key'   => $account['live_public_key'],
+					'secret_key'   => $account['live_secret_key'] ?? '',
 					'mode'         => 'live',
 				];
 				if (empty($first_public_key)) {
@@ -1156,15 +1157,28 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 				}
 			}
 
-			if ($isSandboxEnabled && !empty($account['sandbox_public_key'])) {
-				$accountsData[] = [
-					'account_name' => $account['title'] ?? '',
-					'public_key'   => $account['sandbox_public_key'],
-					'mode'         => 'sandbox',
-				];
-				if (empty($first_public_key)) {
-					$first_public_key = $account['sandbox_public_key'];
-					$first_secret_key = $account['sandbox_secret_key'] ?? '';
+			if ($isSandboxEnabled) {
+				if (!empty($account['sandbox_public_key']) && !empty($account['sandbox_secret_key'])) {
+					$accountsData[] = [
+						'account_name' => $account['title'] ?? '',
+						'public_key'   => $account['sandbox_public_key'],
+						'secret_key'   => $account['sandbox_secret_key'] ?? '',
+						'mode'         => 'sandbox',
+					];
+					if (empty($first_public_key)) {
+						$first_public_key = $account['sandbox_public_key'];
+						$first_secret_key = $account['sandbox_secret_key'] ?? '';
+					}
+				} else {
+					if (($account['sandbox_status'] ?? '') !== 'invalid') {
+						$account['sandbox_status'] = 'invalid';
+						$updated = true;
+					}
+				}
+			} else {
+				if (($account['sandbox_status'] ?? '') !== 'inactive') {
+					$account['sandbox_status'] = 'inactive';
+					$updated = true;
 				}
 			}
 		}

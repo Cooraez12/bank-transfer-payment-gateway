@@ -528,7 +528,31 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			Bank_Transfer_Payment_Gateway_Logger::info('No accounts submitted in admin options.');
 		}
 
-		foreach ((array) $raw_accounts as $account) {
+		$existing_accounts = get_option('woocommerce_bank_transfer_payment_gateway_accounts', []);
+		if (empty($existing_accounts)) {
+			$existing_accounts = get_option('woocommerce_bytenft_payment_gateway_accounts', []);
+			if (empty($existing_accounts)) {
+				$existing_accounts = get_option('woocommerce_unified_payment_gateway_accounts', []);
+			}
+		}
+		if (is_string($existing_accounts)) {
+			$existing_accounts = maybe_unserialize($existing_accounts);
+		}
+		if (!is_array($existing_accounts)) {
+			$existing_accounts = [];
+		}
+
+		$existing_by_id = [];
+		foreach ($existing_accounts as $idx => $existing_acc) {
+			if (is_array($existing_acc)) {
+				if (!empty($existing_acc['unique_id'])) {
+					$existing_by_id[$existing_acc['unique_id']] = $existing_acc;
+				}
+				$existing_by_id['idx_' . $idx] = $existing_acc;
+			}
+		}
+
+		foreach ((array) $raw_accounts as $raw_index => $account) {
 			if (!is_array($account)) continue;
 
 			$account = array_map('sanitize_text_field', $account);
@@ -541,7 +565,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			$sandbox_secret_key = $account['sandbox_secret_key'] ?? '';
 			$has_sandbox         = isset($account['has_sandbox']) && $account['has_sandbox'] === 'on';
 			$live_status        = $account['live_status'] ?? 'Active';
-			$sandbox_status     = $has_sandbox ? ($account['sandbox_status'] ?? 'Active') : '';
+			$sandbox_status     = $has_sandbox ? ($account['sandbox_status'] ?? 'unknown') : 'inactive';
 			$unique_id          = $account['unique_id'] ?? '';
 			if (empty($unique_id)) {
 				// Back-fill missing IDs here, on save, rather than while rendering the settings page.
@@ -549,6 +573,27 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			}
 			$checkout_title      = $account['checkout_title'] ?? '';
 	        $checkout_subtitle   = $account['checkout_subtitle'] ?? '';
+
+			// Write-only secret key handling: preserve existing secret if submitted value is empty
+			$existing_account = null;
+			if (!empty($unique_id) && isset($existing_by_id[$unique_id])) {
+				$existing_account = $existing_by_id[$unique_id];
+			} elseif (isset($existing_by_id['idx_' . $raw_index])) {
+				$existing_account = $existing_by_id['idx_' . $raw_index];
+			}
+
+			if (empty($live_secret_key) && $existing_account && !empty($existing_account['live_secret_key'])) {
+				$live_secret_key = $existing_account['live_secret_key'];
+			}
+			if ($has_sandbox) {
+				if (empty($sandbox_secret_key) && $existing_account && !empty($existing_account['sandbox_secret_key']) && !empty($sandbox_public_key)) {
+					$sandbox_secret_key = $existing_account['sandbox_secret_key'];
+				}
+			} else {
+				$sandbox_public_key = '';
+				$sandbox_secret_key = '';
+				$sandbox_status     = 'inactive';
+			}
 
 			if (empty($account_title) && empty($live_public_key) && empty($live_secret_key) && empty($sandbox_public_key) && empty($sandbox_secret_key)) {
 				continue;
@@ -558,6 +603,13 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				/* translators: %s: Account title */
 				$errors[] = sprintf(__('Account "%s": Title, Live Public Key, and Live Secret Key are required.', 'bank-transfer-payment-gateway'), $account_title);
 				Bank_Transfer_Payment_Gateway_Logger::info("Validation failed: missing required fields for account '{$account_title}'");
+				continue;
+			}
+
+			if ($has_sandbox && (empty($sandbox_public_key) || empty($sandbox_secret_key))) {
+				/* translators: %s: Account title */
+				$errors[] = sprintf(__('Account "%s": Sandbox Public Key and Sandbox Secret Key are required when sandbox is enabled.', 'bank-transfer-payment-gateway'), $account_title);
+				Bank_Transfer_Payment_Gateway_Logger::info("Validation failed: missing sandbox keys for account '{$account_title}'");
 				continue;
 			}
 
@@ -922,7 +974,13 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 											<input type="text" class="live-public-key" name="accounts[<?php echo esc_attr($index); ?>][live_public_key]" placeholder="<?php esc_attr_e('Public Key', 'bank-transfer-payment-gateway'); ?>" value="<?php echo esc_attr($account['live_public_key'] ?? ''); ?>">
 										</div>
 										<div class="account-input">
-											<input type="text" class="live-secret-key" name="accounts[<?php echo esc_attr($index); ?>][live_secret_key]" placeholder="<?php esc_attr_e('Secret Key', 'bank-transfer-payment-gateway'); ?>" value="<?php echo esc_attr($account['live_secret_key'] ?? ''); ?>">
+											<?php
+											$live_secret_masked = !empty($account['live_secret_key']) ? (str_repeat('•', 8) . substr($account['live_secret_key'], -4)) : '';
+											?>
+											<div class="secret-key-wrapper" style="position: relative; display: flex; align-items: center;">
+												<input type="password" autocomplete="new-password" class="live-secret-key" name="accounts[<?php echo esc_attr($index); ?>][live_secret_key]" placeholder="<?php echo !empty($live_secret_masked) ? esc_attr($live_secret_masked) : esc_attr__('Secret Key', 'bank-transfer-payment-gateway'); ?>" value="" data-has-existing="<?php echo !empty($account['live_secret_key']) ? '1' : '0'; ?>" style="padding-right: 30px;">
+												<button type="button" class="toggle-secret-visibility" style="position: absolute; right: 15px; top: calc(50% - 4px); background: none; border: none; cursor: pointer; color: #555; padding: 0; outline: none;" title="<?php esc_attr_e('Show/Hide Secret Key', 'bank-transfer-payment-gateway'); ?>"><i class="fa fa-eye" aria-hidden="true"></i></button>
+											</div>
 										</div>
 									</div>
 
@@ -947,7 +1005,13 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 												<input type="text" class="sandbox-public-key" name="accounts[<?php echo esc_attr($index); ?>][sandbox_public_key]" placeholder="<?php esc_attr_e('Public Key', 'bank-transfer-payment-gateway'); ?>" value="<?php echo esc_attr($account['sandbox_public_key'] ?? ''); ?>">
 											</div>
 											<div class="account-input">
-												<input type="text" class="sandbox-secret-key" name="accounts[<?php echo esc_attr($index); ?>][sandbox_secret_key]" placeholder="<?php esc_attr_e('Secret Key', 'bank-transfer-payment-gateway'); ?>" value="<?php echo esc_attr($account['sandbox_secret_key'] ?? ''); ?>">
+												<?php
+												$sandbox_secret_masked = !empty($account['sandbox_secret_key']) ? (str_repeat('•', 8) . substr($account['sandbox_secret_key'], -4)) : '';
+												?>
+												<div class="secret-key-wrapper" style="position: relative; display: flex; align-items: center;">
+													<input type="password" autocomplete="new-password" class="sandbox-secret-key" name="accounts[<?php echo esc_attr($index); ?>][sandbox_secret_key]" placeholder="<?php echo !empty($sandbox_secret_masked) ? esc_attr($sandbox_secret_masked) : esc_attr__('Secret Key', 'bank-transfer-payment-gateway'); ?>" value="" data-has-existing="<?php echo !empty($account['sandbox_secret_key']) ? '1' : '0'; ?>" style="padding-right: 30px;">
+													<button type="button" class="toggle-secret-visibility" style="position: absolute; right: 15px; top: calc(50% - 4px); background: none; border: none; cursor: pointer; color: #555; padding: 0; outline: none;" title="<?php esc_attr_e('Show/Hide Secret Key', 'bank-transfer-payment-gateway'); ?>"><i class="fa fa-eye" aria-hidden="true"></i></button>
+												</div>
 											</div>
 										</div>
 									</div>
@@ -1629,6 +1693,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 
 		return [
+			'api_secret'       => $api_secret,
 			'api_public_key'   => $api_public_key,
 			'first_name'       => $first_name,
 			'last_name'        => $last_name,
@@ -1853,7 +1918,8 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		// =====================================================
 		// STEP 5: REQUEST FINGERPRINT (REAL FIX)
 		// =====================================================
-		static $executed = false;
+		static $last_fingerprint = null;
+		static $last_selected    = null;
 
 		$fingerprint = md5(wp_json_encode([
 			'flow'   => $flow,
@@ -1863,11 +1929,12 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			'blocks' => $is_blocks
 		]));
 
-		if ($executed === $fingerprint) {
+		if ($last_fingerprint === $fingerprint && $last_selected !== null) {
+			if (!$last_selected) {
+				return $this->hide_gateway($available_gateways, $gateway_id);
+			}
 			return $available_gateways;
 		}
-
-		$executed = $fingerprint;
 
 		// =====================================================
 		// STEP 6: LOAD ACCOUNTS
@@ -1946,6 +2013,9 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		// =====================================================
 		// STEP 11: RETURN RESULT
 		// =====================================================
+		$last_fingerprint = $fingerprint;
+		$last_selected    = !empty($selected);
+
 		$this->selected_account_for_display = $selected;
 
 		if (!$selected) {
@@ -2113,17 +2183,33 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$valid_accounts = [];
 		foreach ($accounts as $i => $account) {
 			if ($this->sandbox) {
-				$status   = strtolower($account['sandbox_status'] ?? '');
-				$has_keys = !empty($account['sandbox_public_key']) && !empty($account['sandbox_secret_key']);
-				if ($status === 'active' && $has_keys) $valid_accounts[] = $account;
+				$has_sandbox = isset($account['has_sandbox']) && $account['has_sandbox'] === 'on';
+				$status      = strtolower($account['sandbox_status'] ?? '');
+				$has_keys    = !empty($account['sandbox_public_key']) && !empty($account['sandbox_secret_key']);
+				if ($has_sandbox && $status === 'active' && $has_keys) {
+					$valid_accounts[] = $account;
+				}
 			} else {
 				$status   = strtolower($account['live_status'] ?? '');
 				$has_keys = !empty($account['live_public_key']) && !empty($account['live_secret_key']);
-				if ($status === 'active' && $has_keys) $valid_accounts[] = $account;
+				if ($status === 'active' && $has_keys) {
+					$valid_accounts[] = $account;
+				}
 			}
 		}
 		$this->accounts = $valid_accounts;
 		return $valid_accounts;
+	}
+
+	public function is_available() {
+		$is_available = ('yes' === $this->enabled);
+
+		if (!$is_available) {
+			return false;
+		}
+
+		$accounts = $this->get_all_accounts();
+		return !empty($accounts);
 	}
 
 	/**

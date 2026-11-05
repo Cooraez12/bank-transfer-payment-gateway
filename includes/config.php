@@ -3,7 +3,7 @@ if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
 
 // config.php
 if (!defined('BANK_TRANSFER_PROTOCOL')) {
-    define('BANK_TRANSFER_PROTOCOL', is_ssl() ? 'https://' : 'http://');
+    define('BANK_TRANSFER_PROTOCOL', 'https://');
 }
  
 if (!defined('BANK_TRANSFER_HOST')) {
