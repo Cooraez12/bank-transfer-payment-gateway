@@ -423,10 +423,14 @@ class BANK_TRANSFER_PAYMENT_ENGINE
     {
         if ($from === 'success') return false;
 
+        // 'expired' and 'cancelled' are reported by the RT backend webhook once
+        // a link dies unpaid or the payer abandons an open attempt. 'processing'
+        // here also covers a backend 'pending' attempt (see resolve_state), so
+        // both may legitimately follow it.
         $map = [
-            'pending'    => ['cancelled', 'processing', 'success', 'failed'],
-            'failed'     => ['failed', 'success', 'processing', 'cancelled'],
-            'processing' => ['processing', 'success', 'failed'],
+            'pending'    => ['cancelled', 'processing', 'success', 'failed', 'expired'],
+            'failed'     => ['failed', 'success', 'processing', 'cancelled', 'expired'],
+            'processing' => ['processing', 'success', 'failed', 'cancelled', 'expired'],
             'cancelled'  => [],
             'expired'    => [],
         ];
