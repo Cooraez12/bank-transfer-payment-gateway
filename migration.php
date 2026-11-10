@@ -4,7 +4,7 @@ if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
 function bank_transfer_create_tables()
 {
 	global $wpdb;
-	$table_name = $wpdb->prefix . 'order_payment_link';
+	$table_name = $wpdb->prefix . 'rt_bank_transfer_payment_link';
 	$charset_collate = $wpdb->get_charset_collate();
 
 	$sql = "CREATE TABLE $table_name (
@@ -22,7 +22,20 @@ function bank_transfer_create_tables()
 
 	require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 	dbDelta($sql);
-	update_option('bank_transfer_schema_version', '1.0.0');
+
+	// BK-12: One-time migration from legacy shared table
+	$old_table = $wpdb->prefix . 'order_payment_link';
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+	if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $old_table)) === $old_table) {
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+		$has_new_data = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$table_name}");
+		if ($has_new_data === 0) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+			$wpdb->query("INSERT IGNORE INTO {$table_name} (order_id, uuid, payment_link, customer_email, amount, created_at) SELECT order_id, uuid, payment_link, customer_email, amount, created_at FROM {$old_table}");
+		}
+	}
+
+	update_option('bank_transfer_schema_version', '1.3.0');
 }
 
 function bank_transfer_migrate_old_settings()
@@ -51,37 +64,8 @@ function bank_transfer_migrate_old_settings()
 		}
 	}
 
-	$bytenft_accounts = get_option('woocommerce_bank_transfer_payment_gateway_accounts');
-	if (empty($bytenft_accounts)) {
-		$old_accounts = get_option('woocommerce_bytenft_payment_gateway_accounts');
-		if (empty($old_accounts)) {
-			$old_accounts = get_option('woocommerce_unified_payment_gateway_accounts');
-		}
-		if ($old_accounts) {
-			$old_accounts = maybe_unserialize($old_accounts);
-			if (is_array($old_accounts) && !empty($old_accounts)) {
-				update_option('woocommerce_bank_transfer_payment_gateway_accounts', $old_accounts);
-			}
-		}
-	}
-
 	$bank_transfer_settings = get_option('woocommerce_bank_transfer_settings');
-	if (empty($bank_transfer_settings)) {
-		$old_settings = get_option('woocommerce_bytenft_settings', []);
-		if (empty($old_settings)) {
-			$old_settings = get_option('woocommerce_unified_settings', []);
-		}
-		if (is_array($old_settings) && !empty($old_settings)) {
-			unset(
-				$old_settings['public_key'],
-				$old_settings['secret_key'],
-				$old_settings['sandbox_public_key'],
-				$old_settings['sandbox_secret_key'],
-				$old_settings['accounts']
-			);
-			update_option('woocommerce_bank_transfer_settings', $old_settings);
-		}
-	} else if (is_array($bank_transfer_settings)) {
+	if (is_array($bank_transfer_settings)) {
 		unset(
 			$bank_transfer_settings['public_key'],
 			$bank_transfer_settings['secret_key'],
@@ -90,14 +74,6 @@ function bank_transfer_migrate_old_settings()
 			$bank_transfer_settings['accounts']
 		);
 		update_option('woocommerce_bank_transfer_settings', $bank_transfer_settings);
-	}
-
-	$group_id = get_option('bank_transfer_group_id');
-	if (empty($group_id)) {
-		$old_group = get_option('bytenft_group_id') ?: get_option('unified_group_id');
-		if ($old_group) {
-			update_option('bank_transfer_group_id', $old_group);
-		}
 	}
 
 	bank_transfer_trigger_sync();

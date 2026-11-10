@@ -814,6 +814,11 @@
          * ========================================================= */
 
         bindInputSanitization: function () {
+            const isBankTransferSelected = () => {
+                const method = $('input[name="payment_method"]:checked').val() || $('input[name="radio-control-wc-payment-method-options"]:checked').val();
+                return method === 'bank_transfer';
+            };
+
             const selectors = `
                 #billing_first_name,
                 #billing-first_name,
@@ -827,8 +832,11 @@
             `;
 
             const sanitizeInput = (input) => {
+                if (!isBankTransferSelected()) {
+                    return;
+                }
                 const clean = input.value.replace(
-                    /[^A-Za-z\s]/g,
+                    /[^A-Za-z\s'\-]/g,
                     ''
                 );
 
@@ -854,11 +862,12 @@
                     }, 0);
                 }
             );
-            
 
             $('#billing_address_1')
                 .on('input', function () {
-
+                    if (!isBankTransferSelected()) {
+                        return;
+                    }
                     this.value = this.value.replace(
                         /[^A-Za-z0-9\s,.\-#]/g,
                         ''

@@ -7,7 +7,11 @@
  * Author URI: https://rt.app/
  * Text Domain: bank-transfer-payment-gateway
  * Plugin URI: https://pay.rt.app/
- * Version: 1.0.0
+ * Version: 1.0.2
+ * Requires at least: 5.8
+ * Requires PHP: 8.0
+ * WC requires at least: 6.5.4
+ * WC tested up to: 9.6
  * License: GPLv3 or later
  * License URI: https://www.gnu.org/licenses/gpl-3.0.html
  *
@@ -88,13 +92,27 @@ function bank_transfer_cancel_unpaid_order_action($order_id)
 		return;
 	}
 
+	// BK-03: Do not cancel at RT while the ACH payment is actively in-flight
+	$engine_state = $order->get_meta('_bank_transfer_state');
+	if ($engine_state === 'processing') {
+		Bank_Transfer_Payment_Gateway_Logger::info("Cancel API skipped: Bank payment is in-flight for Order ID: {$order_id}", [
+			'source'   => 'bank-transfer-payment-gateway',
+			'order_id' => $order_id,
+		]);
+		return;
+	}
+
 	$cache_key   = 'bank_transfer_payment_row_' . intval($order_id);
 	$cache_group = 'bank_transfer_payment_gateway';
 
 	wp_cache_delete('bank_transfer_payment_link_uuid_' . intval($order_id), $cache_group);
 	wp_cache_delete($cache_key, $cache_group);
 
-	$table_name = esc_sql($wpdb->prefix . 'order_payment_link');
+	$table_name = esc_sql($wpdb->prefix . 'rt_bank_transfer_payment_link');
+	$table_exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table_name));
+	if ($table_exists !== $table_name) {
+		$table_name = esc_sql($wpdb->prefix . 'order_payment_link');
+	}
 	// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 	$payment_row = $wpdb->get_row(
 		$wpdb->prepare(
@@ -111,13 +129,8 @@ function bank_transfer_cancel_unpaid_order_action($order_id)
 		return;
 	}
 
+	// BK-09: Only read bank transfer gateway accounts
 	$accounts_data = get_option('woocommerce_bank_transfer_payment_gateway_accounts', []);
-	if (empty($accounts_data)) {
-		$accounts_data = get_option('woocommerce_bytenft_payment_gateway_accounts', []);
-		if (empty($accounts_data)) {
-			$accounts_data = get_option('woocommerce_unified_payment_gateway_accounts', []);
-		}
-	}
 	if (is_string($accounts_data)) {
 		$accounts_data = maybe_unserialize($accounts_data);
 	}

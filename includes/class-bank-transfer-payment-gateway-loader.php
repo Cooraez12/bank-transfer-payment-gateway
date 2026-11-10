@@ -123,6 +123,13 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 			die;
 		}
 
+		// Force payment method to bank_transfer (never trust posted value)
+		$_POST['payment_method'] = 'bank_transfer';
+		$_REQUEST['payment_method'] = 'bank_transfer';
+		if (empty($_POST['bank_transfer_nonce'])) {
+			$_POST['bank_transfer_nonce'] = $nonce;
+		}
+
 		$this->check_rate_limit('block_ajax', 20, 60);
 
 		// Pull the already-initialised gateway from the WC registry.
@@ -143,50 +150,26 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 			);
 		}
 
-		$orderID = WC()->session
-			? ( WC()->session->get('store_api_draft_order') ?: WC()->session->get('order_awaiting_payment') )
-			: null;
-
-		/*
-		 * WooCommerce 10.8+ writes 'store_api_draft_order' in exactly one place:
-		 * the Store API /checkout route (StoreApi/Routes/V1/Checkout.php). This
-		 * handler bypasses that route - the JS calls preventDefault() on Place
-		 * Order and posts here instead - so on WooCommerce 11 the key is never
-		 * set and every block checkout ended at "Invalid order.".
-		 *
-		 * Older WooCommerce created the draft order during the cart routes, so
-		 * the key was already populated by the time Place Order ran. That is why
-		 * this worked in 1.0.16 and stopped working since.
-		 *
-		 * Build the order here, ALWAYS - not only when the pointers are empty.
-		 *
-		 * Reusing a session order id verbatim was sending whatever total that
-		 * order was built with. Once an attempt had been rejected, changing the
-		 * amount changed the cart but never the order, so request-payment kept
-		 * receiving the identical order+amount and kept answering "This order
-		 * appears to be a duplicate".
-		 *
-		 * WC_Checkout::create_order() already resolves this correctly: it
-		 * resumes 'order_awaiting_payment' only while the cart hash still
-		 * matches and the order is pending/failed, otherwise it starts a new
-		 * order - and either way it calls set_data_from_cart(), so items,
-		 * shipping, coupons and totals are rebuilt from the current cart every
-		 * time. A changed amount therefore produces a correct amount, and a
-		 * changed cart produces a new order id that is not a duplicate.
-		 *
-		 * The session pointers stay as the fallback for the case where there is
-		 * no cart to build from.
-		 */
-		if ( ! empty( WC()->cart ) && ! WC()->cart->is_empty() ) {
-			$orderID = $this->bank_transfer_create_block_order() ?: $orderID;
+		// Route Block Checkout AJAX requests through WooCommerce's standard checkout validation pipeline using WC()->checkout()->process_checkout() wherever compatible
+		$wc_nonce = isset($_REQUEST['woocommerce-process-checkout-nonce']) ? $_REQUEST['woocommerce-process-checkout-nonce'] : (isset($_REQUEST['_wpnonce']) ? $_REQUEST['_wpnonce'] : '');
+		if (!empty($wc_nonce) && wp_verify_nonce($wc_nonce, 'woocommerce-process_checkout')) {
+			WC()->checkout()->process_checkout();
+			wp_die();
 		}
+
+		if ( empty( WC()->cart ) || WC()->cart->is_empty() ) {
+			wp_send_json(['result' => 'failure', 'error' => __('Your cart is currently empty.', 'woocommerce')]);
+			die;
+		}
+
+		$orderID = $this->bank_transfer_create_block_order($bank_transferPayment);
 
 		$status = [];
 		if($orderID){
 			$status = $bank_transferPayment->process_payment($orderID);
 		}else{
 			wc_add_notice(__('Invalid order.', 'bank-transfer-payment-gateway'), 'error');
-			$status = ['result' => 'fail','error' => 'Invalid order.'];
+			$status = ['result' => 'failure','error' => 'Invalid order.'];
 		}
 		
 		wp_send_json($status);
@@ -196,25 +179,19 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 	/**
 	 * Create the WooCommerce order for a block checkout payment.
 	 *
-	 * Delegates to WC_Checkout::create_order() so line items, shipping lines,
-	 * coupons, taxes and totals are built by WooCommerce itself rather than by
-	 * hand here.
+	 * Executes WooCommerce checkout validation pipeline (billing, shipping,
+	 * terms, CAPTCHA/anti-fraud, after_checkout_validation, gateway validate_fields)
+	 * and creates the order.
 	 *
+	 * @param WC_Payment_Gateway|null $bank_transferPayment
 	 * @return int Order ID, or 0 on failure.
 	 */
-	private function bank_transfer_create_block_order() {
+	private function bank_transfer_create_block_order($bank_transferPayment = null) {
 
 		$checkout = WC()->checkout();
 		$data     = $checkout->get_posted_data();
 		$customer = WC()->customer;
 
-		/*
-		 * Block checkout inputs carry no name attribute, so the serialized form
-		 * posts almost nothing and get_posted_data() returns blanks - it reads
-		 * $_POST only, with no customer fallback. WC()->customer is what the
-		 * Store API keeps in sync as the shopper types, so use it to fill in
-		 * anything the post did not carry.
-		 */
 		if ( $customer ) {
 
 			$fields = [
@@ -231,18 +208,6 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 				'email',
 			];
 
-			/*
-			 * BILLING ONLY - never shipping.
-			 *
-			 * WooCommerce already owns shipping: get_posted_data() decides via
-			 * maybe_skip_fieldset() whether shipping was submitted at all, and
-			 * create_order() copies billing into shipping when ship-to-different
-			 * is off. Writing shipping keys here puts WC()->customer's copy on
-			 * top of that decision, which overrides the address FunnelKit (and
-			 * any other checkout that manages shipping itself) already set.
-			 *
-			 * Leaving shipping untouched keeps WooCommerce's own behaviour.
-			 */
 			foreach ( $fields as $field ) {
 
 				$key = 'billing_' . $field;
@@ -259,8 +224,101 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 			}
 		}
 
-		if ( empty( $data['payment_method'] ) ) {
-			$data['payment_method'] = 'bank_transfer';
+		// Force payment method to bank_transfer (never trust posted value)
+		$data['payment_method'] = 'bank_transfer';
+
+		// ---------------------------------------------------------------------
+		// 1. BILLING AND SHIPPING FIELD VALIDATION
+		// ---------------------------------------------------------------------
+		$errors          = new WP_Error();
+		$checkout_fields = $checkout->get_checkout_fields();
+
+		if ( ! empty( $checkout_fields['billing'] ) ) {
+			foreach ( $checkout_fields['billing'] as $key => $field ) {
+				$val = $data[ $key ] ?? '';
+				if ( ! empty( $field['required'] ) && '' === trim( (string) $val ) ) {
+					$label = $field['label'] ?? $key;
+					$errors->add( $key . '_required', sprintf( __( '%s is a required field.', 'woocommerce' ), '<strong>' . esc_html( $label ) . '</strong>' ) );
+				}
+				if ( ! empty( $field['validate'] ) && in_array( 'email', (array) $field['validate'], true ) && '' !== $val ) {
+					if ( ! is_email( $val ) ) {
+						$label = $field['label'] ?? $key;
+						$errors->add( $key . '_validation', sprintf( __( '%s is not a valid email address.', 'woocommerce' ), '<strong>' . esc_html( $label ) . '</strong>' ) );
+					}
+				}
+			}
+		}
+
+		if ( WC()->cart && WC()->cart->needs_shipping() ) {
+			$ship_to_different = ! empty( $data['ship_to_different_address'] );
+			$shipping_country  = $ship_to_different
+				? ( $data['shipping_country'] ?? ( $customer ? $customer->get_shipping_country() : '' ) )
+				: ( $data['billing_country'] ?? ( $customer ? $customer->get_billing_country() : '' ) );
+
+			if ( empty( $shipping_country ) ) {
+				$errors->add( 'shipping', __( 'Please enter an address to continue.', 'woocommerce' ) );
+			} elseif ( ! in_array( $shipping_country, array_keys( WC()->countries->get_shipping_countries() ), true ) ) {
+				$errors->add( 'shipping', __( 'Unfortunately, we do not ship to your location. Please enter an alternative shipping address.', 'woocommerce' ) );
+			}
+
+			if ( $ship_to_different && ! empty( $checkout_fields['shipping'] ) ) {
+				foreach ( $checkout_fields['shipping'] as $key => $field ) {
+					$val = $data[ $key ] ?? ( $customer && is_callable( [ $customer, 'get_' . $key ] ) ? $customer->{'get_' . $key}() : '' );
+					if ( ! empty( $field['required'] ) && '' === trim( (string) $val ) ) {
+						$label = $field['label'] ?? $key;
+						$errors->add( $key . '_required', sprintf( __( 'Shipping %s is a required field.', 'woocommerce' ), '<strong>' . esc_html( $label ) . '</strong>' ) );
+					}
+				}
+			}
+		}
+
+		// ---------------------------------------------------------------------
+		// 2. TERMS AND CONDITIONS VALIDATION
+		// ---------------------------------------------------------------------
+		$terms_page_id = function_exists('wc_terms_and_conditions_page_id') ? wc_terms_and_conditions_page_id() : 0;
+		if ( $terms_page_id > 0 && function_exists('wc_terms_and_conditions_checkbox_enabled') && wc_terms_and_conditions_checkbox_enabled() ) {
+			$terms_accepted = ! empty( $_POST['terms'] ) || ! empty( $data['terms'] );
+			if ( ! $terms_accepted ) {
+				$errors->add( 'terms', __( 'Please read and accept the terms and conditions to proceed with your order.', 'woocommerce' ) );
+			}
+		}
+
+		// ---------------------------------------------------------------------
+		// 3. CHECKOUT PROCESS HOOKS (CAPTCHA & ANTI-FRAUD)
+		// ---------------------------------------------------------------------
+		do_action( 'woocommerce_before_checkout_process' );
+		do_action( 'woocommerce_checkout_process' );
+
+		// ---------------------------------------------------------------------
+		// 4. AFTER CHECKOUT VALIDATION HOOKS (GATEWAY PHONE/ZIP & ANTI-FRAUD)
+		// ---------------------------------------------------------------------
+		do_action( 'woocommerce_after_checkout_validation', $data, $errors );
+
+		if ( $errors->has_errors() || wc_notice_count( 'error' ) > 0 ) {
+			$err_msg = $errors->has_errors() ? $errors->get_error_message() : '';
+			if ( empty( $err_msg ) && wc_notice_count( 'error' ) > 0 ) {
+				$notices = wc_get_notices( 'error' );
+				$first   = reset( $notices );
+				$err_msg = is_array( $first ) ? ( $first['notice'] ?? '' ) : (string) $first;
+			}
+			wc_clear_notices();
+			wp_send_json( [ 'result' => 'failure', 'error' => wp_strip_all_tags( $err_msg ?: 'Validation failed.' ) ] );
+			die;
+		}
+
+		// ---------------------------------------------------------------------
+		// 5. GATEWAY FIELD VALIDATION (CONSENT CHECKBOX, ETC.)
+		// ---------------------------------------------------------------------
+		if ( $bank_transferPayment && ! $bank_transferPayment->validate_fields() ) {
+			$notices = wc_get_notices( 'error' );
+			$err_msg = 'Validation failed.';
+			if ( ! empty( $notices ) ) {
+				$first   = reset( $notices );
+				$err_msg = is_array( $first ) ? ( $first['notice'] ?? $err_msg ) : (string) $first;
+			}
+			wc_clear_notices();
+			wp_send_json( [ 'result' => 'failure', 'error' => wp_strip_all_tags( $err_msg ) ] );
+			die;
 		}
 
 		// Prevent reusing an order if the email address OR phone number doesn't match
@@ -724,7 +782,14 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 
 		$payment_status = $this->bank_transfer_normalize_remote_status($response_data);
 
-			
+		// BK-05: Strict validation before accepting remote success
+		if (in_array($payment_status, ['success', 'paid', 'completed', 'settled', 'succeeded'], true)) {
+			if (!$this->bank_transfer_validate_payment_verification_data($order, $response_data, $payment_token)) {
+				Bank_Transfer_Payment_Gateway_Logger::warning($log_prefix . ' CheckStatus | Validation failed: Amount, currency, or pay_id mismatch');
+				$payment_status = null;
+			}
+		}
+
 		// -------------------------
 		// ENGINE CALL
 		// -------------------------
@@ -941,6 +1006,14 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 		}
 
 		$payment_status = $this->bank_transfer_normalize_remote_status($response_data);
+
+		// BK-05: Strict validation before accepting remote success
+		if (in_array($payment_status, ['success', 'paid', 'completed', 'settled', 'succeeded'], true)) {
+			if (!$this->bank_transfer_validate_payment_verification_data($order, $response_data, $payment_token)) {
+				Bank_Transfer_Payment_Gateway_Logger::warning($log_prefix . ' PopupClose | Validation failed: Amount, currency, or pay_id mismatch');
+				$payment_status = null;
+			}
+		}
 
 		// -------------------------
 		// NO STATUS
@@ -1346,12 +1419,6 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 		}
 
 		if (empty($public_key)) {
-			Bank_Transfer_Payment_Gateway_Logger::error(
-				'Unable to send plugin status. No public key found.',
-				[
-					'source' => 'bank-transfer-payment-gateway',
-				]
-			);
 			return;
 		}
 
@@ -1482,6 +1549,16 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 			sanitize_text_field((string) $order->get_meta('_bank_transfer_active_pay_id')),
 		];
 
+		// BK-04: Include full payment ID history for this order
+		$history = $order->get_meta('_bank_transfer_pay_id_history');
+		if (is_array($history)) {
+			foreach ($history as $h_id) {
+				if (!empty($h_id)) {
+					$ids[] = sanitize_text_field((string) $h_id);
+				}
+			}
+		}
+
 		$link_row = $this->bank_transfer_get_order_payment_link_row($order->get_id());
 		if (is_array($link_row)) {
 			$ids[] = sanitize_text_field((string) ($link_row['uuid'] ?? ''));
@@ -1491,6 +1568,88 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 		return array_values(array_unique(array_filter($ids, static function ($id) {
 			return is_string($id) && $id !== '';
 		})));
+	}
+
+	/**
+	 * BK-05: Strict unified verification for remote payment status payloads.
+	 * Enforces known pay_id, exact amount (<= 0.01 tolerance), and matching currency.
+	 *
+	 * @param WC_Order $order
+	 * @param array $payload
+	 * @param string $pay_id
+	 * @return bool
+	 */
+	public function bank_transfer_validate_payment_verification_data($order, $payload, $pay_id = '')
+	{
+		if (!$order instanceof WC_Order || !is_array($payload)) {
+			return false;
+		}
+
+		$order_id = $order->get_id();
+
+		// 1. Order ID match if present in payload
+		$raw_order_id = $payload['order_id'] ?? ($payload['meta_data']['order_id'] ?? null);
+		if ($raw_order_id !== null && $raw_order_id !== '' && is_numeric($raw_order_id) && (int) $raw_order_id !== (int) $order_id) {
+			Bank_Transfer_Payment_Gateway_Logger::warning("[Order #{$order_id}] Verification failed: Order ID mismatch", [
+				'expected' => $order_id,
+				'received' => $raw_order_id,
+			]);
+			return false;
+		}
+
+		// 2. Pay ID match
+		$incoming_pay_id = !empty($pay_id) ? $pay_id : ($payload['pay_id'] ?? ($payload['uuid'] ?? ($payload['payment_token'] ?? '')));
+		if (!empty($incoming_pay_id)) {
+			$known_ids = $this->bank_transfer_known_order_pay_ids($order);
+			$matched   = false;
+			foreach ($known_ids as $kid) {
+				if (hash_equals((string) $kid, (string) $incoming_pay_id)) {
+					$matched = true;
+					break;
+				}
+			}
+			if (!$matched && !empty($known_ids)) {
+				Bank_Transfer_Payment_Gateway_Logger::warning("[Order #{$order_id}] Verification failed: Pay ID mismatch", [
+					'known'    => $known_ids,
+					'received' => $incoming_pay_id,
+				]);
+				return false;
+			}
+		}
+
+		// 3. Mandatory amount check (tolerance <= 0.01)
+		$raw_amount = $payload['amount'] ?? ($payload['total_amount'] ?? null);
+		if ($raw_amount === null || !is_numeric($raw_amount)) {
+			Bank_Transfer_Payment_Gateway_Logger::warning("[Order #{$order_id}] Verification failed: Missing or non-numeric amount");
+			return false;
+		}
+		$api_amount   = (float) $raw_amount;
+		$order_amount = (float) $order->get_total();
+		if (abs($api_amount - $order_amount) > 0.01) {
+			Bank_Transfer_Payment_Gateway_Logger::warning("[Order #{$order_id}] Verification failed: Amount mismatch", [
+				'order_amount' => $order_amount,
+				'api_amount'   => $api_amount,
+			]);
+			return false;
+		}
+
+		// 4. Mandatory currency check
+		$raw_currency = $payload['currency'] ?? ($payload['curr_code'] ?? null);
+		if (empty($raw_currency) || !is_string($raw_currency)) {
+			Bank_Transfer_Payment_Gateway_Logger::warning("[Order #{$order_id}] Verification failed: Missing currency");
+			return false;
+		}
+		$api_currency   = strtoupper(trim(sanitize_text_field($raw_currency)));
+		$order_currency = strtoupper(trim((string) $order->get_currency()));
+		if ($api_currency !== $order_currency) {
+			Bank_Transfer_Payment_Gateway_Logger::warning("[Order #{$order_id}] Verification failed: Currency mismatch", [
+				'order_currency' => $order_currency,
+				'api_currency'   => $api_currency,
+			]);
+			return false;
+		}
+
+		return true;
 	}
 
 	/**
@@ -1515,12 +1674,16 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 			return $cached;
 		}
 
-		$table_name = esc_sql($wpdb->prefix . 'order_payment_link');
+		$table_name = esc_sql($wpdb->prefix . 'rt_bank_transfer_payment_link');
 
 		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$table_exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table_name));
 		if ($table_exists !== $table_name) {
-			return null;
+			$table_name = esc_sql($wpdb->prefix . 'order_payment_link');
+			$table_exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table_name));
+			if ($table_exists !== $table_name) {
+				return null;
+			}
 		}
 
 		$row = $wpdb->get_row(
@@ -1637,6 +1800,14 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 		// -------------------------
 		// 2. FALLBACK: update-txn-status
 		// -------------------------
+		if ($pay_id === '') {
+			Bank_Transfer_Payment_Gateway_Logger::info(
+				"[Order #{$order_id}] Fallback update-txn-status skipped: pay_id is required.",
+				['source' => 'bank-transfer-payment-gateway']
+			);
+			return $result;
+		}
+
 		$body      = wp_json_encode([
 			'order_id'       => $order_id,
 			'payment_token'  => $pay_id,
@@ -1826,7 +1997,9 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 			return null;
 		}
 
-		if ($order->has_status(['processing', 'completed']) || $order->get_meta('_bank_transfer_state') === 'success') {
+		$is_already_paid = ($order->has_status(['processing', 'completed']) || $order->get_meta('_bank_transfer_state') === 'success');
+		$order_created   = $order->get_date_created() ? $order->get_date_created()->getTimestamp() : 0;
+		if ($is_already_paid && (time() - $order_created > 14 * DAY_IN_SECONDS)) {
 			return 'success';
 		}
 
@@ -1866,36 +2039,26 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 			array_merge($ctx, ['pay_id' => $pay_id])
 		);
 
+		if ($state === 'returned') {
+			$result = BANK_TRANSFER_PAYMENT_ENGINE::handle_event(
+				$order_id,
+				'api_sync',
+				[
+					'status'        => 'returned',
+					'payment_token' => $pay_id,
+					'source'        => 'API Sync',
+					'reason'        => $status_data['reason'] ?? ($status_data['return_reason'] ?? 'ACH Return / Reversal'),
+				]
+			);
+			Bank_Transfer_Payment_Gateway_Logger::info("{$log_prefix} Engine result: " . wp_json_encode($result), $ctx);
+			return 'returned';
+		}
+
 		if ($state === 'success') {
-			// The backend confirms money arrived. Before touching the order make sure
-			// the payment really belongs to it (same checks the webhook performs).
-			$raw_order_id = $status_data['order_id'] ?? ($status_data['meta_data']['order_id'] ?? null);
-			if ($raw_order_id !== null && $raw_order_id !== '' && is_numeric($raw_order_id) && (int) $raw_order_id !== (int) $order_id) {
-				Bank_Transfer_Payment_Gateway_Logger::warning(
-					"{$log_prefix} order_id mismatch: expected {$order_id}, backend returned " . sanitize_text_field((string) $raw_order_id),
-					$ctx
-				);
+			// BK-05: Uniform strict verification for amount, currency, and pay_id
+			if (!$this->bank_transfer_validate_payment_verification_data($order, $status_data, $pay_id)) {
+				$this->bank_transfer_note_sync_mismatch($order, "Verification failed (amount, currency, or pay_id mismatch)");
 				return null;
-			}
-
-			$raw_currency = $status_data['currency'] ?? ($status_data['curr_code'] ?? null);
-			if (!empty($raw_currency) && is_string($raw_currency)) {
-				$api_currency   = strtoupper(trim(sanitize_text_field($raw_currency)));
-				$order_currency = strtoupper(trim((string) $order->get_currency()));
-				if ($api_currency !== $order_currency) {
-					$this->bank_transfer_note_sync_mismatch($order, "currency {$order_currency} vs backend {$api_currency}");
-					return null;
-				}
-			}
-
-			$raw_amount = $status_data['amount'] ?? ($status_data['total_amount'] ?? null);
-			if ($raw_amount !== null && $raw_amount !== '' && is_numeric($raw_amount)) {
-				$api_amount   = (float) $raw_amount;
-				$order_amount = (float) $order->get_total();
-				if (abs($api_amount - $order_amount) > 0.05) {
-					$this->bank_transfer_note_sync_mismatch($order, "amount {$order_amount} vs backend {$api_amount}");
-					return null;
-				}
 			}
 
 			$result = BANK_TRANSFER_PAYMENT_ENGINE::handle_event(
@@ -2100,13 +2263,16 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 			return;
 		}
 		$last_sync = (int) $order->get_meta('_bank_transfer_last_row_sync');
-		if (time() - $last_sync < 10) {
+		if (time() - $last_sync < 300) {
 			return;
 		}
 		$order->update_meta_data('_bank_transfer_last_row_sync', time());
 		$order->save();
 
-		$this->sync_single_order_status($order);
+		// BK-14: Schedule background async sync rather than blocking the admin orders page render loop
+		if (!wp_next_scheduled('bank_transfer_async_sync_order', [$order->get_id()])) {
+			wp_schedule_single_event(time(), 'bank_transfer_async_sync_order', [$order->get_id()]);
+		}
 	}
 
 	/**

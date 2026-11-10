@@ -73,12 +73,6 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_REST_API
 		$is_sandbox = isset($settings['sandbox']) && $settings['sandbox'] === 'yes';
 
 		$accounts_data = get_option('woocommerce_bank_transfer_payment_gateway_accounts', []);
-		if (empty($accounts_data)) {
-			$accounts_data = get_option('woocommerce_bytenft_payment_gateway_accounts', []);
-			if (empty($accounts_data)) {
-				$accounts_data = get_option('woocommerce_unified_payment_gateway_accounts', []);
-			}
-		}
 		if (is_string($accounts_data)) {
 			$accounts_data = maybe_unserialize($accounts_data);
 		}
@@ -112,7 +106,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_REST_API
 			}
 			$pub = $is_sandbox ? ($account['sandbox_public_key'] ?? '') : ($account['live_public_key'] ?? '');
 			$sec = $is_sandbox ? ($account['sandbox_secret_key'] ?? '') : ($account['live_secret_key'] ?? '');
-			$sec = trim(trim(sanitize_text_field($sec)), '"\'');
+			$sec = trim(trim((string) $sec), '"\'');
 
 			if (empty($sec)) {
 				continue;
@@ -129,60 +123,45 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_REST_API
 			return false;
 		}
 
-		// 1. Check HMAC signature if provided
-		$sig_header       = $request->get_header('x-signature');
-		$timestamp_header = $request->get_header('x-timestamp');
+		// BK-07: Mandatory HMAC signature verification with replay protection
+		$sig_header       = (string) $request->get_header('x-signature');
+		$timestamp_header = (string) $request->get_header('x-timestamp');
 
-		if (!empty($sig_header) && !empty($timestamp_header)) {
-			// X-Timestamp must be a strict unsigned digit string (rejects "123abc", signs, floats, exponents).
-			$timestamp_header = trim((string) $timestamp_header);
-			if (!ctype_digit($timestamp_header) || strlen($timestamp_header) > 12) {
-				Bank_Transfer_Payment_Gateway_Logger::warning('Webhook timestamp malformed');
-				return false;
-			}
-
-			$timestamp_int = (int) $timestamp_header;
-			if (abs(time() - $timestamp_int) > 300) {
-				Bank_Transfer_Payment_Gateway_Logger::warning('Webhook timestamp expired', ['timestamp' => $timestamp_int]);
-				return false;
-			}
-
-			$raw_body = $request->get_body();
-			foreach ($valid_secrets as $secret) {
-				$expected_sig = hash_hmac('sha256', $timestamp_header . '.' . $raw_body, $secret);
-				if (hash_equals($expected_sig, $sig_header)) {
-					return true;
-				}
-			}
-			Bank_Transfer_Payment_Gateway_Logger::warning('Webhook HMAC signature mismatch');
+		if (empty($sig_header) || empty($timestamp_header)) {
+			Bank_Transfer_Payment_Gateway_Logger::warning('Webhook rejected: missing HMAC signature headers');
 			return false;
 		}
 
-		// 2. Fallback to secret key in authorization header or nonce parameter (reject public keys)
-		$params      = $request->get_params();
-		$api_key_raw = trim(trim($params['nonce'] ?? ''), '"\'');
+		// X-Timestamp must be a strict unsigned digit string (rejects "123abc", signs, floats, exponents).
+		$timestamp_header = trim($timestamp_header);
+		if (!ctype_digit($timestamp_header) || strlen($timestamp_header) > 12) {
+			Bank_Transfer_Payment_Gateway_Logger::warning('Webhook timestamp malformed');
+			return false;
+		}
 
-		if (empty($api_key_raw)) {
-			$auth_header = $request->get_header('authorization');
-			if (!empty($auth_header) && preg_match('/Bearer\s+(\S+)/i', $auth_header, $matches)) {
-				$api_key_raw = $matches[1];
-			} elseif (!empty($request->get_header('x-api-key'))) {
-				$api_key_raw = $request->get_header('x-api-key');
+		$timestamp_int = (int) $timestamp_header;
+		if (abs(time() - $timestamp_int) > 300) {
+			Bank_Transfer_Payment_Gateway_Logger::warning('Webhook timestamp expired', ['timestamp' => $timestamp_int]);
+			return false;
+		}
+
+		// Replay protection within the 300-second window
+		$replay_cache_key = 'bank_transfer_webhook_sig_' . md5($sig_header);
+		if (get_transient($replay_cache_key) !== false) {
+			Bank_Transfer_Payment_Gateway_Logger::warning('Webhook rejected: replay detected', ['signature' => substr($sig_header, 0, 10) . '...']);
+			return false;
+		}
+
+		$raw_body = $request->get_body();
+		foreach ($valid_secrets as $secret) {
+			$expected_sig = hash_hmac('sha256', $timestamp_header . '.' . $raw_body, $secret);
+			if (hash_equals($expected_sig, $sig_header)) {
+				set_transient($replay_cache_key, 1, 300);
+				return true;
 			}
 		}
 
-		if (!empty($api_key_raw)) {
-			$decoded_nonce = base64_decode($api_key_raw, true);
-			$key_to_verify = ($decoded_nonce !== false && !empty($decoded_nonce)) ? $decoded_nonce : $api_key_raw;
-			$key_to_verify = trim(trim(sanitize_text_field($key_to_verify)), '"\'');
-
-			foreach ($valid_secrets as $secret) {
-				if (hash_equals($secret, $key_to_verify) || hash_equals($secret, $api_key_raw)) {
-					return true;
-				}
-			}
-		}
-
+		Bank_Transfer_Payment_Gateway_Logger::warning('Webhook HMAC signature mismatch');
 		return false;
 	}
 
@@ -426,14 +405,25 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_REST_API
 			$api_order_status
 		);
 
+		if (is_array($result) && ($result['reason'] ?? '') === 'invalid_transition_blocked') {
+			return new WP_REST_Response([
+				'success'       => false,
+				'message'       => 'State transition refused.',
+				'state'         => $state,
+				'order_status'  => $order ? $order->get_status() : '',
+				'engine_reason' => $result['reason'] ?? null,
+			], 422);
+		}
+
 		$wc_status = $order->get_status();
-		if ($wc_status === 'processing' || $wc_status === 'completed') {
+		if (($wc_status === 'processing' || $wc_status === 'completed') && $state !== 'returned') {
 			$state = 'success';
 		}
 
-		$is_success = ($state === 'success');
+		$is_success = ($state === 'success' || $state === 'returned');
 		$message = match ($state) {
 			'success'    => 'Payment confirmed successfully.',
+			'returned'   => 'Payment returned or reversed.',
 			'failed'     => 'Payment failed. Please try again.',
 			'cancelled'  => 'Payment was cancelled.',
 			'processing' => 'Payment is being processed.',

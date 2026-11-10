@@ -1,103 +1,66 @@
 === Bank Transfer Payment Gateway ===
-Contributors: RT
-Tags: woocommerce, payment gateway, fiat, bank transfer
-Requires at least: 6.2
-Tested up to: 7.1
+Contributors: rtapp
+Tags: woocommerce, payment gateway, fiat, bank transfer, ach
+Requires at least: 5.8
+Tested up to: 6.7
 Requires PHP: 8.0
-Stable tag: 1.0.0
+Stable tag: 1.0.2
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
-The  Bank Transfer Payment Gateway plugin for WooCommerce allows you to accept secure bank transfer and fiat payments on your WooCommerce store.
+The Bank Transfer Payment Gateway plugin for WooCommerce allows you to accept secure bank transfer and ACH payments on your WooCommerce store.
 
 == Description ==
 
-This plugin integrates Bank Transfer Payment Gateway with WooCommerce, enabling you to accept secure payments seamlessly.
+This plugin integrates Bank Transfer Payment Gateway with WooCommerce, enabling you to accept direct bank payments and ACH transfers seamlessly.
 
 == External Services ==
 
-This plugin connects to external APIs hosted by RT Payment Gateway (https://qa.rt.app) to authenticate merchants, verify transaction limits, create secure payment sessions, and sync payment statuses.
+This plugin connects to external APIs hosted by RT Payment Gateway (https://pay.rt.app) to authenticate merchants, verify transaction limits, create secure payment sessions, and sync payment statuses.
 
 Endpoints used:
-* `https://qa.rt.app/api/plugin/check/plugin` - Validates the plugin installation and retrieves status. Sends site URL and account public keys.
-* `https://qa.rt.app/api/sync-account-status` - Synchronizes merchant account active statuses on a scheduled cron. Sends account public keys and mode.
-* `https://qa.rt.app/api/dailylimit` - Checks daily transaction limits for eligible accounts during checkout. Sends account public key and order amount.
-* `https://qa.rt.app/api/request-payment` - Creates an external payment session link for customer checkout. Sends order amount, currency, order UUID, and masked customer details.
-* `https://qa.rt.app/api/cancel-order-link` - Cancels an active payment session when an order is cancelled. Sends order ID and UUID with HMAC signature.
-* `https://qa.rt.app/api/update-txn-status` - Checks status of an in-progress transaction when customer completes or closes the checkout popup.
+* `https://pay.rt.app/api/plugin/check/plugin` - Validates the plugin installation and retrieves status. Sends site URL and account public keys.
+* `https://pay.rt.app/api/sync-account-status` - Synchronizes merchant account active statuses on a scheduled cron. Sends account public keys and mode.
+* `https://pay.rt.app/api/dailylimit` - Checks daily transaction limits for eligible accounts during checkout. Sends account public key and order amount.
+* `https://pay.rt.app/api/request-payment` - Creates an external payment session link for customer checkout. Sends order amount, currency, order UUID, and billing details for payment processing.
+* `https://pay.rt.app/api/cancel-order-link` - Cancels an active payment session when an unpaid order is cancelled. Sends order ID and UUID with HMAC signature.
+* `https://pay.rt.app/api/update-txn-status` - Checks status of an in-progress transaction when customer completes or closes the checkout popup.
 
 Privacy Policy & Terms:
-* Terms of Service: https://qa.rt.app/terms
-* Privacy Policy: https://qa.rt.app/privacy
+* Terms of Service: https://pay.rt.app/terms
+* Privacy Policy: https://pay.rt.app/privacy
 
 == Installation ==
 
 1. Download the plugin ZIP file.
 2. Extract the ZIP file and upload it to the `wp-content/plugins` directory.
 3. Activate the plugin through the 'Plugins' menu in WordPress.
+4. Configure your API keys in WooCommerce > Settings > Payments > Bank Transfer.
 
 == Frequently Asked Questions ==
 
 = How do I obtain API keys? =
 
-Visit the payment provider portal and log in to your account. Navigate to Developer Settings to generate or retrieve API keys.
+Visit the RT merchant portal and log in to your account. Navigate to Developer Settings to generate or retrieve API keys.
 
 == Changelog ==
 
+= 1.0.2 =
+* Added support for ACH returns and chargebacks with signed webhooks.
+* Hardened webhook authentication to require strict HMAC-SHA256 signature verification.
+* Prevented auto-cancellation of pending bank transfers by updating orders to on-hold during the ACH clearing window.
+* Added payment ID history tracking to handle duplicate and re-initiated payment links without data loss.
+* Unified strict payment verification checks across webhooks, AJAX status checks, popup close, and cron sync.
+* Addressed guest checkout user association security issue.
+* Enhanced WooCommerce Block Checkout validation pipeline.
+* Optimized admin orders page rendering by decoupling synchronous API calls.
+
+= 1.0.1 =
+* Enhanced order status synchronization and HPOS compatibility.
+* Improved security headers and input sanitization.
+
 = 1.0.0 =
-* Security enhancements, order verification hardening, rate limiting, and HPOS compatibility.
-
-= 1.0.21 =
-* Updated the checkout flow to open the payment link directly without requiring the customer confirmation popup.
-* Improved payment link opening and checkout stability across browsers.
-* Fixed invalid order issues during the checkout and payment flow.
-* Improved handling of existing customer phone numbers and date of birth (DOB) during checkout.
-* Fixed popup blocker issues when opening the payment link.
-* Resolved compatibility issues with the PixelYourSite (PYS) plugin.
-
-= 1.0.20 =
-* Fixed popup blocker issues on mobile browsers.
-* Improved payment flow compatibility on mobile Safari and Chrome.
-
-= 1.0.19 =
-* Removed generic SQL injection check to prevent conflicts with third-party plugins.
-* Improved customer account confirmation and new account creation flow during checkout.
-
-= 1.0.18 =
-* Fixed an issue where invalid or stale orders could interfere with the checkout flow.
-* Fixed an issue where the payment gateway remained visible when no eligible merchant account was available by automatically hiding the gateway.
-
-= 1.0.17 =
-* Enables merchants using multiple ByteNFT accounts to track sales separately.
-* Fix FunnelKit Compatibility Issue Causing Shipping Address Override
-
-= 1.0.16 =
-* Updated referrer URL handling in the payment flow.
-* Improved popup redirect behavior using referrer URL enhancements.
-* PO Box Address Validation and Redirection Conflict with Other Payment Gateways.
-
-= 1.0.15 =
-* Resolved the WooCommerce database version mismatch issue.
-
-= 1.0.14 =
-* Improved payment order synchronization logic for better reliability and consistency between payment gateway and WooCommerce orders.
-* Optimized payment status handling to reduce race conditions and ensure accurate final order states.
-* Minor code improvements for enhanced stability and maintainability.
-* W provider support
-
-= 1.0.13 =
-* Payment Gateway Visibility Fix: Resolved an issue where when the payment limit was reached, other available payment methods were not displayed correctly.
-* PO Box Validation Improvements: Enhanced billing address validation to prevent PO Box entries where restricted, improving address accuracy and reducing failed or unsupported transactions.
-
-= 1.0.12 =
-* Enhanced phone number normalization and validation with improved error messages.
-* Ensured failed, cancelled, or expired orders now update their status correctly in WordPress/WooCommerce.
-
-= 1.0.11 =
-* Hide plugin Fix: Hide Plugin Fix
-
-= 1.0.10 =
-* Update: Removed transaction limit check logic so the plugin remains available regardless of transaction limits.
+* Initial release of Bank Transfer Payment Gateway for WooCommerce.
 
 = 1.0.9 =
 * Blank Page Fix: Resolved a white screen issue caused by improper initialization and unexpected output.

@@ -46,10 +46,27 @@ class BANK_TRANSFER_PAYMENT_ENGINE
             }
 
             if ($current_state === 'success') {
-                return self::safe_response($order, 'final_success_locked', 'success');
+                if ($new_state === 'returned' && $event_type === 'webhook_update') {
+                    $can_transition = true;
+                } elseif ($new_state === 'success') {
+                    $incoming_token = $payload['payment_token'] ?? ($payload['pay_id'] ?? '');
+                    $stored_token = $order->get_transaction_id() ?: $order->get_meta('_bank_transfer_pay_id');
+                    if (!empty($incoming_token) && !empty($stored_token) && !hash_equals((string) $stored_token, (string) $incoming_token)) {
+                        $order->add_order_note(sprintf(
+                            /* translators: 1: incoming pay_id, 2: stored pay_id */
+                            __('Warning: Duplicate payment success received for token %1$s. Order was already settled with token %2$s.', 'bank-transfer-payment-gateway'),
+                            esc_html($incoming_token),
+                            esc_html($stored_token)
+                        ));
+                        $order->save();
+                    }
+                    return self::safe_response($order, 'final_success_locked', 'success');
+                } else {
+                    return self::safe_response($order, 'final_success_locked', 'success');
+                }
+            } else {
+                $can_transition = self::can_transition($current_state, $new_state);
             }
-
-            $can_transition = self::can_transition($current_state, $new_state);
 
             /**
              * A verified successful payment must always be able to settle an order
@@ -165,7 +182,7 @@ class BANK_TRANSFER_PAYMENT_ENGINE
      * ========================================================= */
     private static function apply($order, $state, $event_type, $payload)
     {
-        if (self::get_state($order) === 'success') {
+        if (self::get_state($order) === 'success' && $state !== 'returned') {
             return;
         }
 
@@ -183,7 +200,8 @@ class BANK_TRANSFER_PAYMENT_ENGINE
         // it must be allowed through again.
         if (
             $last_lock === $state_lock_key &&
-            !($state === 'success' && $order->has_status(['pending', 'on-hold', 'failed', 'cancelled', 'checkout-draft']))
+            !($state === 'success' && $order->has_status(['pending', 'on-hold', 'failed', 'cancelled', 'checkout-draft'])) &&
+            $state !== 'returned'
         ) {
             return;
         }
@@ -192,6 +210,7 @@ class BANK_TRANSFER_PAYMENT_ENGINE
 
         $wc_status = match ($state) {
             'success'    => self::get_success_wc_status(),
+            'returned'   => 'on-hold',
             'failed'     => 'failed',
             'cancelled'  => 'cancelled',
             'expired'    => 'failed',
@@ -207,6 +226,25 @@ class BANK_TRANSFER_PAYMENT_ENGINE
                 if ($order->get_status() !== $wc_status) {
                     $order->update_status($wc_status, '');
                 }
+            } elseif ($state === 'returned') {
+                $reason = !empty($payload['reason']) ? $payload['reason'] : (!empty($payload['return_reason']) ? $payload['return_reason'] : 'ACH Return / Reversal');
+                $note = sprintf(
+                    /* translators: %s: return reason */
+                    __('ACH Payment Returned / Reversed by bank (%s). Order moved to on-hold. Attention required.', 'bank-transfer-payment-gateway'),
+                    esc_html($reason)
+                );
+                $order->update_status('on-hold', $note);
+                $order->update_meta_data('_bank_transfer_returned', 'yes');
+                $order->update_meta_data('_bank_transfer_returned_reason', sanitize_text_field($reason));
+                $order->update_meta_data('_bank_transfer_returned_time', current_time('mysql'));
+
+                Bank_Transfer_Payment_Gateway_Logger::warning('ACH Payment Returned / Reversed for Order #' . $order_id, [
+                    'order_id'      => $order_id,
+                    'payment_token' => $payment_token,
+                    'reason'        => $reason,
+                ]);
+
+                do_action('bank_transfer_payment_returned', $order, $payload);
             } else {
                 $order->update_status($wc_status, '');
             }
@@ -435,10 +473,11 @@ class BANK_TRANSFER_PAYMENT_ENGINE
 
         return match ($status) {
             'success', 'paid', 'completed', 'settled', 'succeeded' => 'success',
+            'returned', 'reversed', 'nsf', 'chargeback', 'disputed', 'dispute', 'refunded' => 'returned',
             'failed'                        => 'failed',
             'cancelled', 'canceled'        => 'cancelled',
             'expired'                      => 'expired',
-            'pending', 'processing'        => 'processing',
+            'pending', 'processing', 'submitted', 'authorized' => 'processing',
             default                        => null
         };
     }
@@ -451,6 +490,7 @@ class BANK_TRANSFER_PAYMENT_ENGINE
         return match ($state) {
             'completed' => 'success',
             'canceled'  => 'cancelled',
+            'reversed', 'nsf', 'chargeback', 'disputed', 'refunded' => 'returned',
             default     => $state
         };
     }
@@ -460,7 +500,7 @@ class BANK_TRANSFER_PAYMENT_ENGINE
      * ========================================================= */
     private static function can_transition($from, $to)
     {
-        if ($from === 'success') return false;
+        if ($from === 'success') return $to === 'returned';
         if ($from === $to) return true;
 
         // 'expired' and 'cancelled' are reported by the RT backend webhook once
@@ -470,13 +510,14 @@ class BANK_TRANSFER_PAYMENT_ENGINE
         // the attempt was closed on the portal, so 'success' stays reachable from
         // every non-final state (handle_event enforces the same rule).
         $map = [
-            'pending'        => ['pending', 'cancelled', 'processing', 'success', 'failed', 'expired', 'on-hold'],
-            'on-hold'        => ['pending', 'cancelled', 'processing', 'success', 'failed', 'expired', 'on-hold'],
-            'checkout-draft' => ['pending', 'cancelled', 'processing', 'success', 'failed', 'expired', 'on-hold'],
+            'pending'        => ['pending', 'cancelled', 'processing', 'success', 'failed', 'expired', 'on-hold', 'returned'],
+            'on-hold'        => ['pending', 'cancelled', 'processing', 'success', 'failed', 'expired', 'on-hold', 'returned'],
+            'checkout-draft' => ['pending', 'cancelled', 'processing', 'success', 'failed', 'expired', 'on-hold', 'returned'],
             'failed'         => ['failed', 'success', 'processing', 'cancelled', 'expired', 'pending'],
-            'processing'     => ['processing', 'success', 'failed', 'cancelled', 'expired'],
+            'processing'     => ['processing', 'success', 'failed', 'cancelled', 'expired', 'on-hold', 'returned'],
             'cancelled'      => ['cancelled', 'success', 'processing', 'pending'],
             'expired'        => ['expired', 'success', 'processing', 'pending'],
+            'returned'       => ['returned'],
         ];
 
         return in_array($to, $map[$from] ?? [], true);
@@ -558,7 +599,7 @@ class BANK_TRANSFER_PAYMENT_ENGINE
         // 1. PRIMARY: engine state (validated)
         $state = self::normalize_state(self::get_state($order));
 
-        if (!empty($state) && in_array($state, ['pending','processing','success','failed','cancelled','expired'], true)) {
+        if (!empty($state) && in_array($state, ['pending','processing','success','failed','cancelled','expired','returned'], true)) {
             return $state;
         }
 
@@ -566,10 +607,11 @@ class BANK_TRANSFER_PAYMENT_ENGINE
         if (!empty($api_status) && is_string($api_status)) {
             $mapped = match (strtolower(trim($api_status))) {
                 'success', 'paid', 'completed', 'settled', 'succeeded' => 'success',
+                'returned', 'reversed', 'nsf', 'chargeback', 'disputed', 'dispute', 'refunded' => 'returned',
                 'failed' => 'failed',
                 'cancelled', 'canceled' => 'cancelled',
                 'expired' => 'expired',
-                'processing', 'pending' => 'processing',
+                'processing', 'pending', 'submitted', 'authorized' => 'processing',
                 default => null
             };
 

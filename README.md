@@ -14,29 +14,29 @@ The Bank Transfer Payment Gateway plugin for WooCommerce allows you to accept se
 
 ## External Services
 
-This plugin connects to external APIs hosted by RT Payment Gateway (`https://qa.rt.app`) to authenticate merchants, verify transaction limits, create secure payment sessions, and sync payment statuses.
+This plugin connects to external APIs hosted by RT Payment Gateway (`https://pay.rt.app`) to authenticate merchants, verify transaction limits, create secure payment sessions, and sync payment statuses.
 
 ### Endpoints Used:
-* `https://qa.rt.app/api/plugin/check/plugin` - Validates plugin installation and retrieves status. Sends site URL and account public keys.
-* `https://qa.rt.app/api/sync-account-status` - Synchronizes merchant account active statuses on a scheduled cron. Sends account public keys and mode.
-* `https://qa.rt.app/api/dailylimit` - Checks daily transaction limits for eligible accounts during checkout. Sends account public key and order amount.
-* `https://qa.rt.app/api/request-payment` - Creates an external payment session link for customer checkout. Sends order amount, currency, order UUID, and masked customer details.
-* `https://qa.rt.app/api/cancel-order-link` - Cancels an active payment session when an order is cancelled. Sends order ID and UUID with HMAC signature.
-* `https://qa.rt.app/api/update-txn-status` - Checks status of an in-progress transaction when customer completes or closes checkout popup.
+* `https://pay.rt.app/api/plugin/check/plugin` - Validates plugin installation and retrieves status. Sends site URL and account public keys.
+* `https://pay.rt.app/api/sync-account-status` - Synchronizes merchant account active statuses on a scheduled cron. Sends account public keys and mode.
+* `https://pay.rt.app/api/dailylimit` - Checks daily transaction limits for eligible accounts during checkout. Sends account public key and order amount.
+* `https://pay.rt.app/api/request-payment` - Creates an external payment session link for customer checkout. Sends order amount, currency, order UUID, and masked customer details.
+* `https://pay.rt.app/api/cancel-order-link` - Cancels an active payment session when an order is cancelled. Sends order ID and UUID with HMAC signature.
+* `https://pay.rt.app/api/update-txn-status` - Checks status of an in-progress transaction when customer completes or closes checkout popup.
 
 ### Policies:
-* [Terms of Service](https://qa.rt.app/terms)
-* [Privacy Policy](https://qa.rt.app/privacy)
+* [Terms of Service](https://pay.rt.app/terms)
+* [Privacy Policy](https://pay.rt.app/privacy)
 
 ## Support
 
-For any issues or enhancement requests with this plugin, please contact the ByteNFT support team. Ensure you provide your plugin, WooCommerce, and WordPress version where applicable to expedite troubleshooting.
+For any issues or enhancement requests with this plugin, please contact the RT support team. Ensure you provide your plugin, WooCommerce, and WordPress version where applicable to expedite troubleshooting.
 
 ## Getting Started
 
-1. Obtain your API keys from your ByteNFT dashboard in your Developer Settings - API Keys.
+1. Obtain your API keys from your RT merchant dashboard in Developer Settings - API Keys.
 2. Follow the plugin installation instructions below.
-3. You are ready to take payments in your WooCommerce store!
+3. You are ready to accept bank transfer payments in your WooCommerce store!
 
 ## Installation
 
@@ -154,7 +154,7 @@ For any issues or enhancement requests with this plugin, please contact the Byte
 
 ## Documentation
 
-The official documentation for this plugin is available at: [https://qa.rt.app/docs/wordpress-plugin](https://qa.rt.app/docs/wordpress-plugin)
+The official documentation for this plugin is available at: [https://pay.rt.app/docs/wordpress-plugin](https://pay.rt.app/docs/wordpress-plugin)
 
 ## Changelog
 
@@ -256,7 +256,7 @@ The official documentation for this plugin is available at: [https://qa.rt.app/d
 
 ## Support
 
-For customer support, visit: [https://qa.rt.app/contact-us](https://qa.rt.app/contact-us)
+For customer support, visit: [https://pay.rt.app/contact-us](https://pay.rt.app/contact-us)
 
 ## Why Choose ByteNFT Payment Gateway?
 
