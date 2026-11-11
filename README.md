@@ -1,6 +1,6 @@
 # RT Bank Transfer Payment Gateway
 
-Accept ACH bank transfer payments in WooCommerce through RT's hosted payment page (https://pay.rt.app).
+Accept ACH bank transfer payments in WooCommerce through RT's hosted payment page (https://app.rt.app).
 
 | | |
 |---|---|
@@ -67,7 +67,7 @@ RT calls the shop back at `POST /wp-json/rt-bank-transfer/v1/data` with the same
 
 Status words accepted: `success`, `processing`, `pending`, `failed`, `canceled`, `expired`, `returned` (with `return_code` / `failure_reason`).
 
-Filters: `rt_bank_transfer_alert_email` (recipient of return / duplicate alerts), `rt_bank_transfer_is_production_environment`, `bank_transfer_webhook_url`, `bank_transfer_api_host`.
+Filters: `rt_bank_transfer_alert_email` (recipient of return / duplicate alerts), `rt_bank_transfer_is_production_environment`, `bank_transfer_webhook_url`, `rt_payment_api_base` (full API base, default `https://app.rt.app/payment-api`; must be HTTPS on rt.app; for a test shop return `https://dev.rt.app/payment-api`). The older `bank_transfer_api_host` (bare host) still works. Sandbox and Live use the same address; the keys decide the mode.
 
 ## Upgrading from 1.0.x
 
@@ -79,4 +79,4 @@ Filters: `rt_bank_transfer_alert_email` (recipient of return / duplicate alerts)
 
 ## Support
 
-https://pay.rt.app/contact-us
+https://rt.app/contact-us

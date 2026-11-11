@@ -267,8 +267,8 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 	{
 		if (plugin_basename(BANK_TRANSFER_PAYMENT_GATEWAY_FILE) === $file) {
 			$row_meta = [
-				'docs'    => '<a href="' . esc_url(apply_filters('bank_transfer_docs_url', BANK_TRANSFER_BASE_URL . '/docs')) . '" target="_blank">' . esc_html__('Documentation', 'bank-transfer-payment-gateway') . '</a>',
-				'support' => '<a href="' . esc_url(apply_filters('bank_transfer_support_url', BANK_TRANSFER_BASE_URL . '/contact-us')) . '" target="_blank">' . esc_html__('Support', 'bank-transfer-payment-gateway') . '</a>',
+				'docs'    => '<a href="' . esc_url(apply_filters('bank_transfer_docs_url', 'https://rt.app/docs/wordpress-plugin')) . '" target="_blank">' . esc_html__('Documentation', 'bank-transfer-payment-gateway') . '</a>',
+				'support' => '<a href="' . esc_url(apply_filters('bank_transfer_support_url', 'https://rt.app/contact-us')) . '" target="_blank">' . esc_html__('Support', 'bank-transfer-payment-gateway') . '</a>',
 			];
 
 			$links = array_merge($links, $row_meta);

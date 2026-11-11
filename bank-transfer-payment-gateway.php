@@ -6,7 +6,7 @@
  * Author: RT.app
  * Author URI: https://rt.app/
  * Text Domain: bank-transfer-payment-gateway
- * Plugin URI: https://pay.rt.app/
+ * Plugin URI: https://rt.app/
  * Version: 1.0.2
  * Requires at least: 6.2
  * Requires PHP: 8.0
