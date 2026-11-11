@@ -49,6 +49,13 @@ jQuery(document).ready(function ($) {
 		$('#bank-transfer-global-error').text('');
 	}
 
+	/* WooCommerce keeps "Save changes" switched off until something changes.
+	   Adding or removing an account is a change, so switch it on. */
+	function markChanged() {
+		$form.find('.woocommerce-save-button, [name="save"]').prop('disabled', false).removeClass('disabled');
+		$form.trigger('change');
+	}
+
 	function sandboxModeOn() {
 		return $('#woocommerce_' + gatewayId + '_sandbox').is(':checked');
 	}
@@ -160,6 +167,7 @@ jQuery(document).ready(function ($) {
 		var $new = $(newAccountHtml());
 		$(this).closest('.add-account-btn').before($new);
 		updateAccountIndices();
+		markChanged();
 		$new.find('.account-title').trigger('focus');
 	});
 
@@ -173,6 +181,7 @@ jQuery(document).ready(function ($) {
 		}
 		$account.remove();
 		updateAccountIndices();
+		markChanged();
 		if (!$(ACCOUNT).length) {
 			$('#bank-transfer-global-error').text(t.removed_last);
 		}

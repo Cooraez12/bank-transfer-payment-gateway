@@ -324,3 +324,6 @@
 	background-color: #fff0f0;
 	color: #dc3545;
 }
+.bank-transfer-sync-account .error {
+	color: #b32d2e;
+}

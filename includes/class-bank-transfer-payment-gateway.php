@@ -644,6 +644,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			$live_status        = $account['live_status'] ?? '';
 			$sandbox_status     = $has_sandbox ? ($account['sandbox_status'] ?? 'unknown') : 'inactive';
 			$unique_id          = $account['unique_id'] ?? '';
+			$submitted_unique_id = $unique_id;
 			if (empty($unique_id)) {
 				// Back-fill missing IDs here, on save, rather than while rendering the settings page.
 				$unique_id = $this->bank_transfer_get_unique_id();
@@ -655,7 +656,9 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			$existing_account = null;
 			if (!empty($unique_id) && isset($existing_by_id[$unique_id])) {
 				$existing_account = $existing_by_id[$unique_id];
-			} elseif (isset($existing_by_id['idx_' . $raw_index])) {
+			} elseif ($submitted_unique_id === '' && isset($existing_by_id['idx_' . $raw_index])) {
+				// Only an account saved before ids existed is matched by position.
+				// A new account must never pick up another account's secret key.
 				$existing_account = $existing_by_id['idx_' . $raw_index];
 			}
 
