@@ -47,8 +47,8 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		$this->id                 = self::ID;
 		$this->icon               = '';
-		$this->method_title       = __('Bank Transfer Payment Gateway', 'bank-transfer-payment-gateway');
-		$this->method_description = __('This plugin allows you to accept payments in USD through a secure payment gateway integration.', 'bank-transfer-payment-gateway');
+		$this->method_title       = __('RT Bank Transfer', 'bank-transfer-payment-gateway');
+		$this->method_description = __('Let shoppers pay from their US bank account. Bank payments take 1 to 5 business days to arrive. Refunds are made in RT, not here: open the payment in your RT account and refund it there.', 'bank-transfer-payment-gateway');
 
 		$this->bank_transfer_init_form_fields();
 		$this->init_settings();
@@ -97,15 +97,74 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 	public function load_gateway_settings() {
 		$this->title       = sanitize_text_field($this->get_option('title'));
-		$this->description = !empty($this->get_option('description'))
-			? sanitize_textarea_field($this->get_option('description'))
-			: ($this->get_option('show_consent_checkbox') === 'yes' ? 1 : 0);
+		$this->description = self::clean_description($this->get_option('description'));
 
 		$this->enabled    = sanitize_text_field($this->get_option('enabled'));
 		$this->sandbox    = 'yes' === sanitize_text_field($this->get_option('sandbox'));
 		$this->public_key = sanitize_text_field($this->get_option($this->sandbox ? 'sandbox_public_key' : 'public_key'));
 		$this->secret_key = sanitize_text_field($this->get_option($this->sandbox ? 'sandbox_secret_key' : 'secret_key'));
 		$this->current_account_index = 0;
+	}
+
+	/**
+	 * Tags a shop owner may use in the checkout description. Everything else,
+	 * including style attributes and scripts, is removed.
+	 *
+	 * @return array
+	 */
+	private static function description_allowed_html() {
+		return [
+			'a'      => ['href' => true, 'title' => true, 'target' => true, 'rel' => true],
+			'br'     => [],
+			'em'     => [],
+			'strong' => [],
+			'b'      => [],
+			'i'      => [],
+			'p'      => [],
+		];
+	}
+
+	/**
+	 * Make a stored description safe and readable.
+	 *
+	 * Versions before 1.0.3 saved a default wrapped in styled paragraph tags,
+	 * which showed up as raw code in the settings box. Those wrappers are
+	 * turned into plain paragraphs; any other markup is limited to a few safe
+	 * tags. Output is still escaped where it is printed.
+	 *
+	 * @param mixed $value Stored description.
+	 * @return string
+	 */
+	public static function clean_description($value) {
+		$value = is_string($value) ? $value : '';
+		if ($value === '') {
+			return '';
+		}
+		// Paragraph tags become blank lines so the text box shows plain text.
+		$value = preg_replace('#</p>\s*<p[^>]*>#i', "\n\n", $value);
+		$value = preg_replace('#</?p[^>]*>#i', '', (string) $value);
+		$value = wp_kses((string) $value, self::description_allowed_html());
+		$lines = array_map('trim', explode("\n", str_replace("\r", '', $value)));
+		return trim(preg_replace("/\n{3,}/", "\n\n", implode("\n", $lines)));
+	}
+
+	/**
+	 * WooCommerce reads this when it shows or uses the description setting.
+	 * The description is always returned cleaned.
+	 */
+	public function get_option($key, $empty_value = null) {
+		$value = parent::get_option($key, $empty_value);
+		if ('description' === $key) {
+			return self::clean_description($value);
+		}
+		return $value;
+	}
+
+	/**
+	 * Clean the description when the settings are saved.
+	 */
+	public function validate_description_field($key, $value) {
+		return self::clean_description(is_string($value) ? wp_unslash($value) : '');
 	}
 
 	/**
@@ -182,7 +241,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 				$errors->add(
 					'bank_transfer_phone_error',
-					$normalized['error'] ?? __('Invalid phone number.', 'bank-transfer-payment-gateway')
+					$normalized['error'] ?? __('Please check your phone number. Enter it with the area code, for example 415 555 0132.', 'bank-transfer-payment-gateway')
 				);
 
 				return;
@@ -216,7 +275,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			$errors->add(
 				'bank_transfer_po_box_error',
-				__('PO Box addresses are not accepted. Please enter a physical street address.', 'bank-transfer-payment-gateway')
+				__('Bank transfer needs a street address, not a PO Box. Please enter your street address.', 'bank-transfer-payment-gateway')
 			);
 
 			return;
@@ -279,7 +338,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 				$errors->add(
 					'bank_transfer_postcode_error',
-					__('Invalid ZIP / postal code.', 'bank-transfer-payment-gateway')
+					__('Please check your ZIP / postal code.', 'bank-transfer-payment-gateway')
 				);
 
 				return;
@@ -343,7 +402,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				);
 
 				throw $this->bank_transfer_checkout_exception(
-					$normalized['error'] ?? __('Invalid phone number.', 'bank-transfer-payment-gateway')
+					$normalized['error'] ?? __('Please check your phone number. Enter it with the area code, for example 415 555 0132.', 'bank-transfer-payment-gateway')
 				);
 			}
 
@@ -379,7 +438,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			);
 
 			throw $this->bank_transfer_checkout_exception(
-				__('PO Box addresses are not accepted. Please enter a physical street address.', 'bank-transfer-payment-gateway')
+				__('Bank transfer needs a street address, not a PO Box. Please enter your street address.', 'bank-transfer-payment-gateway')
 			);
 		}
 
@@ -440,7 +499,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				);
 
 				throw $this->bank_transfer_checkout_exception(
-					__('Invalid ZIP / postal code.', 'bank-transfer-payment-gateway')
+					__('Please check your ZIP / postal code.', 'bank-transfer-payment-gateway')
 				);
 			}
 
@@ -503,12 +562,12 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	public function bank_transfer_process_admin_options() {
 		// BT-12: Check capabilities and nonce BEFORE processing options
 		if (!current_user_can('manage_woocommerce')) {
-			wp_die(esc_html__('You do not have permission to access this page.', 'bank-transfer-payment-gateway'));
+			wp_die(esc_html__('You do not have permission to change these settings. Ask the shop owner or an administrator.', 'bank-transfer-payment-gateway'));
 		}
 
 		if (!isset($_POST['bank_transfer_accounts_nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['bank_transfer_accounts_nonce'])), 'bank_transfer_accounts_nonce_action')) {
 			Bank_Transfer_Payment_Gateway_Logger::info('CSRF check failed during admin options update.');
-			wp_die(esc_html__('Security check failed!', 'bank-transfer-payment-gateway'));
+			wp_die(esc_html__('This page was open for too long. Go back, refresh the settings page and save again.', 'bank-transfer-payment-gateway'));
 		}
 
 		$enabled     = isset($_POST['woocommerce_' . $this->id . '_enabled']) ? 'yes' : 'no';
@@ -552,8 +611,8 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			);
 		}
 
-		if (!is_array($raw_accounts) || empty($raw_accounts)) {
-			$errors[] = __('You cannot delete all accounts. At least one valid payment account must be configured.', 'bank-transfer-payment-gateway');
+		$no_accounts_submitted = (!is_array($raw_accounts) || empty($raw_accounts));
+		if ($no_accounts_submitted) {
 			Bank_Transfer_Payment_Gateway_Logger::info('No accounts submitted in admin options.');
 		}
 
@@ -582,7 +641,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			$sandbox_public_key = $account['sandbox_public_key'] ?? '';
 			$sandbox_secret_key = $account['sandbox_secret_key'] ?? '';
 			$has_sandbox         = isset($account['has_sandbox']) && $account['has_sandbox'] === 'on';
-			$live_status        = $account['live_status'] ?? 'Active';
+			$live_status        = $account['live_status'] ?? '';
 			$sandbox_status     = $has_sandbox ? ($account['sandbox_status'] ?? 'unknown') : 'inactive';
 			$unique_id          = $account['unique_id'] ?? '';
 			if (empty($unique_id)) {
@@ -617,50 +676,103 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				continue;
 			}
 
-			if (empty($account_title) || empty($live_public_key) || empty($live_secret_key)) {
-				/* translators: %s: Account title */
-				$errors[] = sprintf(__('Account "%s": Title, Live Public Key, and Live Secret Key are required.', 'bank-transfer-payment-gateway'), $account_title);
-				Bank_Transfer_Payment_Gateway_Logger::info("Validation failed: missing required fields for account '{$account_title}'");
+			if (empty($account_title)) {
+				$errors[] = __('Give each payment account a name, for example "Main account".', 'bank-transfer-payment-gateway');
+				Bank_Transfer_Payment_Gateway_Logger::info('Validation failed: an account has no name.');
 				continue;
 			}
 
-			if ($has_sandbox && (empty($sandbox_public_key) || empty($sandbox_secret_key))) {
-				/* translators: %s: Account title */
-				$errors[] = sprintf(__('Account "%s": Sandbox Public Key and Sandbox Secret Key are required when sandbox is enabled.', 'bank-transfer-payment-gateway'), $account_title);
+			// A business may start with test keys only, live keys only, or both.
+			$has_live_keys    = !empty($live_public_key) && !empty($live_secret_key);
+			$has_sandbox_keys = $has_sandbox && !empty($sandbox_public_key) && !empty($sandbox_secret_key);
+
+			if (!$has_live_keys && (!empty($live_public_key) || !empty($live_secret_key))) {
+				/* translators: %s: Account name */
+				$errors[] = sprintf(__('Account "%s": paste both live keys (publishable and secret), or leave both live boxes empty to test with sandbox keys only.', 'bank-transfer-payment-gateway'), $account_title);
+				Bank_Transfer_Payment_Gateway_Logger::info("Validation failed: incomplete live keys for account '{$account_title}'");
+				continue;
+			}
+
+			if ($has_sandbox && !$has_sandbox_keys) {
+				/* translators: %s: Account name */
+				$errors[] = sprintf(__('Account "%s": paste both sandbox keys (publishable and secret), or untick "I have sandbox (test) keys".', 'bank-transfer-payment-gateway'), $account_title);
 				Bank_Transfer_Payment_Gateway_Logger::info("Validation failed: missing sandbox keys for account '{$account_title}'");
 				continue;
 			}
 
-			$live_combined = $live_public_key . '|' . $live_secret_key;
-			if (in_array($live_combined, $unique_live_keys, true)) {
-				/* translators: %s: Account title */
-				$errors[] = sprintf(__('Account "%s": Live Public Key and Live Secret Key must be unique.', 'bank-transfer-payment-gateway'), $account_title);
-				Bank_Transfer_Payment_Gateway_Logger::info("Validation failed: duplicate live keys for account '{$account_title}'");
+			if (!$has_live_keys && !$has_sandbox_keys) {
+				/* translators: %s: Account name */
+				$errors[] = sprintf(__('Account "%s": add your sandbox keys to test, or your live keys to take real payments. You can copy them in RT under Developers.', 'bank-transfer-payment-gateway'), $account_title);
+				Bank_Transfer_Payment_Gateway_Logger::info("Validation failed: no keys for account '{$account_title}'");
 				continue;
 			}
 
-			if ($live_public_key === $live_secret_key) {
-				/* translators: %s: Account title */
-				$errors[] = sprintf(__('Account "%s": Live Public Key and Live Secret Key must be different.', 'bank-transfer-payment-gateway'), $account_title);
-				Bank_Transfer_Payment_Gateway_Logger::info("Validation warning: live keys are identical for account '{$account_title}'");
-			}
+			if ($has_live_keys) {
+				$live_combined = $live_public_key . '|' . $live_secret_key;
+				if (in_array($live_combined, $unique_live_keys, true)) {
+					/* translators: %s: Account name */
+					$errors[] = sprintf(__('Account "%s": these live keys are already used by another account on this page. Remove one of the two accounts.', 'bank-transfer-payment-gateway'), $account_title);
+					Bank_Transfer_Payment_Gateway_Logger::info("Validation failed: duplicate live keys for account '{$account_title}'");
+					continue;
+				}
 
-			$unique_live_keys[] = $live_combined;
+				if ($live_public_key === $live_secret_key) {
+					/* translators: %s: Account name */
+					$errors[] = sprintf(__('Account "%s": the live publishable key and live secret key are the same. Paste your secret key in the second box.', 'bank-transfer-payment-gateway'), $account_title);
+					Bank_Transfer_Payment_Gateway_Logger::info("Validation failed: live keys are identical for account '{$account_title}'");
+					continue;
+				}
+
+				$unique_live_keys[] = $live_combined;
+				if ($live_status === '') {
+					$live_status = 'unknown';
+				}
+			} else {
+				$live_status = 'inactive';
+			}
 
 			if ($has_sandbox && !empty($sandbox_public_key) && !empty($sandbox_secret_key)) {
 				$sandbox_combined = $sandbox_public_key . '|' . $sandbox_secret_key;
 				if (in_array($sandbox_combined, $unique_sandbox_keys, true)) {
-					/* translators: %s: Account title */
-					$errors[] = sprintf(__('Account "%s": Sandbox Public Key and Sandbox Secret Key must be unique.', 'bank-transfer-payment-gateway'), $account_title);
+					/* translators: %s: Account name */
+					$errors[] = sprintf(__('Account "%s": these sandbox keys are already used by another account on this page. Remove one of the two accounts.', 'bank-transfer-payment-gateway'), $account_title);
 					Bank_Transfer_Payment_Gateway_Logger::info("Validation failed: duplicate sandbox keys for account '{$account_title}'");
 					continue;
 				}
 				if ($sandbox_public_key === $sandbox_secret_key) {
-					/* translators: %s: Account title */
-					$errors[] = sprintf(__('Account "%s": Sandbox Public Key and Sandbox Secret Key must be different.', 'bank-transfer-payment-gateway'), $account_title);
-					Bank_Transfer_Payment_Gateway_Logger::info("Validation warning: sandbox keys are identical for account '{$account_title}'");
+					/* translators: %s: Account name */
+					$errors[] = sprintf(__('Account "%s": the sandbox publishable key and sandbox secret key are the same. Paste your sandbox secret key in the second box.', 'bank-transfer-payment-gateway'), $account_title);
+					Bank_Transfer_Payment_Gateway_Logger::info("Validation failed: sandbox keys are identical for account '{$account_title}'");
+					continue;
 				}
 				$unique_sandbox_keys[] = $sandbox_combined;
+			}
+
+			// The status is what RT last told us about these exact keys. It is
+			// never taken from the submitted form, and it starts again as
+			// "not checked yet" whenever a key changes.
+			$live_unchanged = $existing_account
+				&& hash_equals((string) ($existing_account['live_public_key'] ?? ''), (string) $live_public_key)
+				&& hash_equals((string) ($existing_account['live_secret_key'] ?? ''), (string) $live_secret_key);
+			$sandbox_unchanged = $existing_account
+				&& hash_equals((string) ($existing_account['sandbox_public_key'] ?? ''), (string) $sandbox_public_key)
+				&& hash_equals((string) ($existing_account['sandbox_secret_key'] ?? ''), (string) $sandbox_secret_key);
+
+			if (!$has_live_keys) {
+				$live_status = 'inactive';
+			} else {
+				$live_status = $live_unchanged ? sanitize_key((string) ($existing_account['live_status'] ?? '')) : 'unknown';
+				if ($live_status === '') {
+					$live_status = 'unknown';
+				}
+			}
+			if (!$has_sandbox_keys) {
+				$sandbox_status = 'inactive';
+			} else {
+				$sandbox_status = $sandbox_unchanged ? sanitize_key((string) ($existing_account['sandbox_status'] ?? '')) : 'unknown';
+				if ($sandbox_status === '') {
+					$sandbox_status = 'unknown';
+				}
 			}
 
 			$valid_accounts[$normalized_index++] = [
@@ -682,12 +794,22 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 
 		if (empty($valid_accounts) && empty($errors)) {
-			$errors[] = __('You cannot delete all accounts. At least one valid payment account must be configured.', 'bank-transfer-payment-gateway');
-			Bank_Transfer_Payment_Gateway_Logger::info('All submitted accounts failed validation. No accounts will be saved.');
+			// Nothing to check and nothing wrong: the list is simply empty (a new
+			// install, or the business removed its last account). Save it, and
+			// say what to do next. Checkout hides bank transfer until an
+			// approved account exists, so shoppers are never offered it.
+			update_option(BANK_TRANSFER_ACCOUNTS_OPTION, [], false);
+			$this->admin_notices->bank_transfer_add_notice(
+				'no_accounts',
+				'notice notice-warning',
+				__('Add a payment account to accept bank payments. Bank transfer stays hidden at checkout until an account is added and approved.', 'bank-transfer-payment-gateway')
+			);
+			add_action('admin_notices', [$this->admin_notices, 'display_notices']);
+			return;
 		}
 
 		if (empty($errors)) {
-			update_option(BANK_TRANSFER_ACCOUNTS_OPTION, $valid_accounts);
+			update_option(BANK_TRANSFER_ACCOUNTS_OPTION, $valid_accounts, false);
 
 			$first_account = !empty($valid_accounts) ? reset($valid_accounts) : null;
 			$public_key    = $first_account ? ($this->sandbox ? ($first_account['sandbox_public_key'] ?? '') : ($first_account['live_public_key'] ?? '')) : '';
@@ -729,9 +851,20 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				if (method_exists($loader, 'handle_cron_event')) {
 					$loader->handle_cron_event();
 					Bank_Transfer_Payment_Gateway_Logger::info('Triggered BANK_TRANSFER_PAYMENT_GATEWAY_Loader::handle_cron_event() after settings save.');
+
+					// Say plainly whether RT accepted the keys that were just saved.
+					$sync_problem = method_exists($loader, 'bank_transfer_last_sync_problem') ? $loader->bank_transfer_last_sync_problem($this->sandbox) : '';
+					if ($sync_problem !== '') {
+						$this->admin_notices->bank_transfer_add_notice('sync_problem', 'notice notice-error', $sync_problem);
+					}
 				}
 			}
 		} else {
+			$this->admin_notices->bank_transfer_add_notice(
+				'settings_error_intro',
+				'notice notice-error',
+				__('Your payment accounts were not saved. Fix the following and save again:', 'bank-transfer-payment-gateway')
+			);
 			foreach ($errors as $error) {
 				$this->admin_notices->bank_transfer_add_notice('settings_error', 'notice notice-error', $error);
 				Bank_Transfer_Payment_Gateway_Logger::info("Admin settings error: {$error}");
@@ -777,16 +910,16 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 	public function bank_transfer_get_form_fields() {
 		$dev_instructions_link = sprintf(
-			'<strong><a class="bank_transfer-instructions-url" href="%s" target="_blank">%s</a></strong><br>',
+			'<strong><a class="bank-transfer-instructions-url" href="%s" target="_blank" rel="noopener noreferrer">%s</a></strong><br>',
 			esc_url($this->base_url . '/developers'),
-			__('click here to access your developer account', 'bank-transfer-payment-gateway')
+			esc_html__('Open the Developers page in RT', 'bank-transfer-payment-gateway')
 		);
 
 		return apply_filters('bank_transfer_woocommerce_gateway_settings_fields_' . $this->id, [
 
 			'enabled' => [
-				'title'   => __('Enable/Disable', 'bank-transfer-payment-gateway'),
-				'label'   => __('Enable Bank Transfer Payment Gateway', 'bank-transfer-payment-gateway'),
+				'title'   => __('Turn on', 'bank-transfer-payment-gateway'),
+				'label'   => __('Offer bank transfer at checkout', 'bank-transfer-payment-gateway'),
 				'type'    => 'checkbox',
 				'default' => 'no',
 			],
@@ -794,36 +927,37 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			'title' => [
 				'title'       => __('Title', 'bank-transfer-payment-gateway'),
 				'type'        => 'text',
-				'description' => __('This controls the title which the user sees during checkout.', 'bank-transfer-payment-gateway'),
-				'default'     => __('Pay by bank transfer (ACH)', 'bank-transfer-payment-gateway'),
+				'description' => __('The name shoppers see for this payment method at checkout.', 'bank-transfer-payment-gateway'),
+				'default'     => __('Pay by bank transfer', 'bank-transfer-payment-gateway'),
 				'desc_tip'    => true,
 			],
 
 			'description' => [
 				'title'       => __('Description', 'bank-transfer-payment-gateway'),
 				'type'        => 'textarea',
-				'description' => __('Provide a brief description of the payment option.', 'bank-transfer-payment-gateway'),
-				'default'     => __(
-					'<p style="margin:0 0 6px; font-size:13px;">Pay directly from your US bank account. You will be taken to RT\'s secure payment page to connect your bank and authorise the transfer.</p>
-					<p style="margin:0 0 6px; font-size:13px;">Bank transfers take 1 to 5 business days to settle; your order is confirmed once the funds arrive.</p>',
-					'bank-transfer-payment-gateway'
-				),
+				'description' => __('A short note shoppers see under the title at checkout. Plain text; links and bold are allowed.', 'bank-transfer-payment-gateway'),
+				'default'     => __('Pay from your US bank account. You will connect your bank on RT\'s secure page. Bank payments take 1 to 5 business days to confirm.', 'bank-transfer-payment-gateway'),
 				'desc_tip'    => true,
 			],
 
 			'instructions' => [
-				'title'       => __('Instructions', 'bank-transfer-payment-gateway'),
+				'title'       => __('How to set up', 'bank-transfer-payment-gateway'),
 				'type'        => 'title',
-				/* translators: 1: opening link tag, 2: closing link tag */
-				'description' => sprintf(__('To configure this gateway, %1$sGet your API keys from your merchant account: Developer Settings > API Keys.%2$s', 'bank-transfer-payment-gateway'), $dev_instructions_link, ''),
-				'desc_tip'    => true,
+				'description' => wp_kses(
+					__('1. Copy your keys from RT (Developers).', 'bank-transfer-payment-gateway') . ' ' . $dev_instructions_link .
+					esc_html__('2. Under Payment accounts below, press Add account and paste the keys.', 'bank-transfer-payment-gateway') . '<br>' .
+					esc_html__('3. Press Save changes. The account status shows whether RT accepted the keys.', 'bank-transfer-payment-gateway') . '<br><br>' .
+					'<strong>' . esc_html__('Refunds:', 'bank-transfer-payment-gateway') . '</strong> ' .
+					esc_html__('refund a bank payment in RT, not in WooCommerce. Open the payment in your RT account and refund it there.', 'bank-transfer-payment-gateway'),
+					['a' => ['href' => true, 'target' => true, 'class' => true, 'rel' => true], 'strong' => [], 'br' => []]
+				),
 			],
 
 			'sandbox' => [
-				'title'       => __('Sandbox', 'bank-transfer-payment-gateway'),
-				'label'       => __('Enable Sandbox Mode', 'bank-transfer-payment-gateway'),
+				'title'       => __('Test mode', 'bank-transfer-payment-gateway'),
+				'label'       => __('Use sandbox (test) keys', 'bank-transfer-payment-gateway'),
 				'type'        => 'checkbox',
-				'description' => __('Use sandbox API keys (real payments will not be taken).', 'bank-transfer-payment-gateway'),
+				'description' => __('While this is on, no real money moves. Turn it off before taking real orders.', 'bank-transfer-payment-gateway'),
 				'default'     => 'no',
 			],
 
@@ -832,15 +966,15 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			],
 
 			'accounts' => [
-				'title'       => __('Payment Accounts', 'bank-transfer-payment-gateway'),
+				'title'       => __('Payment accounts', 'bank-transfer-payment-gateway'),
 				'type'        => 'accounts_repeater',
-				'description' => __('Add multiple payment accounts dynamically.', 'bank-transfer-payment-gateway'),
+				'description' => __('The RT account that receives the money. Most shops need one.', 'bank-transfer-payment-gateway'),
 			],
 
 			'order_status' => [
-				'title'       => __('Order Status', 'bank-transfer-payment-gateway'),
+				'title'       => __('Order status when paid', 'bank-transfer-payment-gateway'),
 				'type'        => 'select',
-				'description' => __('Order status after successful payment.', 'bank-transfer-payment-gateway'),
+				'description' => __('The status an order moves to once the money has arrived.', 'bank-transfer-payment-gateway'),
 				'default'     => '',
 				'id'          => 'order_status_select',
 				'desc_tip'    => true,
@@ -851,18 +985,18 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			],
 
 			'show_consent_checkbox' => [
-				'title'       => __('Show Consent Checkbox', 'bank-transfer-payment-gateway'),
-				'label'       => __('Enable consent checkbox on checkout page', 'bank-transfer-payment-gateway'),
+				'title'       => __('Consent tick box', 'bank-transfer-payment-gateway'),
+				'label'       => __('Ask shoppers to agree before paying', 'bank-transfer-payment-gateway'),
 				'type'        => 'checkbox',
-				'description' => __('Show a checkbox for user consent during checkout.', 'bank-transfer-payment-gateway'),
+				'description' => __('Adds a tick box at checkout: "I consent to the collection of my data to process this payment".', 'bank-transfer-payment-gateway'),
 				'default'     => 'no',
 			],
 
 			'debug' => [
-				'title'       => __('Debug Log', 'bank-transfer-payment-gateway'),
-				'label'       => __('Enable debug logging', 'bank-transfer-payment-gateway'),
+				'title'       => __('Troubleshooting log', 'bank-transfer-payment-gateway'),
+				'label'       => __('Keep a detailed log', 'bank-transfer-payment-gateway'),
 				'type'        => 'checkbox',
-				'description' => __('Log plugin events, such as API requests, inside WooCommerce > Status > Logs.', 'bank-transfer-payment-gateway'),
+				'description' => __('Useful when RT support asks for it. Find the log under WooCommerce > Status > Logs. Your secret keys are never written to it.', 'bank-transfer-payment-gateway'),
 				'default'     => 'no',
 				'desc_tip'    => true,
 			],
@@ -899,17 +1033,18 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				<label><?php echo esc_html($data['title']); ?></label>
 			</th>
 			<td class="forminp">
-				<div id="global-error" class="error-message" style="color: red; margin-bottom: 10px;"></div>
-				<div class="bank_transfer-accounts-container bank-transfer-accounts-container">
+				<p class="description" style="margin-bottom: 10px;"><?php echo esc_html($data['description'] ?? ''); ?></p>
+				<div id="bank-transfer-global-error" class="bank-transfer-global-error" style="color: #b32d2e; margin-bottom: 10px;" role="alert"></div>
+				<div class="bank-transfer-accounts-container">
 					<?php if (!empty($option_value)): ?>
-						<div class="bank_transfer-sync-account bank-transfer-sync-account">
+						<div class="bank-transfer-sync-account">
 							<span id="<?php echo esc_attr($this->id); ?>-sync-status"></span>
-							<button class="button" id="<?php echo esc_attr($this->id); ?>-sync-accounts"><span><i class="fa fa-refresh" aria-hidden="true"></i></span> <?php esc_html_e('Sync Accounts', 'bank-transfer-payment-gateway'); ?></button>
+							<button type="button" class="button" id="<?php echo esc_attr($this->id); ?>-sync-accounts"><span><i class="fa fa-refresh" aria-hidden="true"></i></span> <?php esc_html_e('Check with RT', 'bank-transfer-payment-gateway'); ?></button>
 						</div>
 					<?php endif; ?>
 
 					<?php if (empty($option_value)): ?>
-						<div class="empty-account"><?php esc_html_e('No accounts available. Please add one to continue.', 'bank-transfer-payment-gateway'); ?></div>
+						<div class="empty-account"><?php esc_html_e('No payment account yet. Press "Add account" and paste your RT keys.', 'bank-transfer-payment-gateway'); ?></div>
 					<?php else: ?>
 						<?php foreach (array_values($option_value) as $index => $account): ?>
 							<?php
@@ -917,45 +1052,40 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 							$sandbox_status = (!empty($account['sandbox_status'])) ? $account['sandbox_status'] : 'unknown';
 							$unique_id      = (!empty($account['unique_id'])) ? $account['unique_id'] : '';
 							?>
-							<div class="bank_transfer-account bank-transfer-account" data-index="<?php echo esc_attr($index); ?>">
-								<input type="hidden" name="accounts[<?php echo esc_attr($index); ?>][live_status]" value="<?php echo esc_attr($account['live_status'] ?? ''); ?>">
-								<input type="hidden" name="accounts[<?php echo esc_attr($index); ?>][sandbox_status]" value="<?php echo esc_attr($account['sandbox_status'] ?? ''); ?>">
+							<div class="bank-transfer-account" data-index="<?php echo esc_attr($index); ?>">
+								<input type="hidden" class="live-status" name="accounts[<?php echo esc_attr($index); ?>][live_status]" value="<?php echo esc_attr($account['live_status'] ?? ''); ?>">
+								<input type="hidden" class="sandbox-status" name="accounts[<?php echo esc_attr($index); ?>][sandbox_status]" value="<?php echo esc_attr($account['sandbox_status'] ?? ''); ?>">
 								<div class="title-blog">
 									<h4>
-										<span class="account-name-display bank_transfer-name-display bank-transfer-name-display">
-											<?php echo !empty($account['title']) ? esc_html($account['title']) : esc_html__('Untitled Account', 'bank-transfer-payment-gateway'); ?>
+										<span class="account-name-display bank-transfer-name-display">
+											<?php echo !empty($account['title']) ? esc_html($account['title']) : esc_html__('New account', 'bank-transfer-payment-gateway'); ?>
 										</span>
-										&nbsp;<i class="fa fa-caret-down <?php echo esc_attr($this->id); ?>-toggle-btn bank_transfer-toggle-btn bank-transfer-toggle-btn account-toggle-btn" aria-hidden="true"></i>
+										&nbsp;<i class="fa fa-caret-down bank-transfer-toggle-btn account-toggle-btn" aria-hidden="true"></i>
 									</h4>
 									<div class="action-button">
 										<div class="account-status-block">
-											<span class="account-status-label <?php echo esc_attr($sandbox_enabled ? 'sandbox-status' : 'live-status'); ?> <?php echo esc_attr(strtolower($sandbox_enabled ? ($sandbox_status ?? '') : ($live_status ?? ''))); ?>">
-												<?php
-												if ($sandbox_enabled) {
-													echo esc_html__('Sandbox Account Status: ', 'bank-transfer-payment-gateway') . esc_html(ucfirst($sandbox_status));
-												} else {
-													echo esc_html__('Live Account Status: ', 'bank-transfer-payment-gateway') . esc_html(ucfirst($live_status));
-												}
-												?>
+											<?php $shown_status = bank_transfer_account_status_view($sandbox_enabled ? $sandbox_status : $live_status, $sandbox_enabled); ?>
+											<span class="account-status-label <?php echo esc_attr($shown_status['class']); ?>" title="<?php echo esc_attr($shown_status['help']); ?>">
+												<?php echo esc_html($shown_status['label']); ?>
 											</span>
 										</div>
-										<button type="button" class="delete-account-btn">
+										<button type="button" class="delete-account-btn" aria-label="<?php esc_attr_e('Remove this account', 'bank-transfer-payment-gateway'); ?>" title="<?php esc_attr_e('Remove this account', 'bank-transfer-payment-gateway'); ?>">
 											<i class="fa fa-trash" aria-hidden="true"></i>
 										</button>
 									</div>
 								</div>
 
-								<div class="<?php echo esc_attr($this->id); ?>-info bank_transfer-info bank-transfer-info account-info">
+								<div class="bank-transfer-info account-info">
 									<div class="add-blog title-priority">
 										<div class="account-input account-name">
-											<label><?php esc_html_e('Account Name', 'bank-transfer-payment-gateway'); ?></label>
-											<input type="text" class="account-title <?php echo esc_attr($this->id); ?>-title" name="accounts[<?php echo esc_attr($index); ?>][title]" placeholder="<?php esc_attr_e('Account Title', 'bank-transfer-payment-gateway'); ?>" value="<?php echo esc_attr($account['title'] ?? ''); ?>">
+											<label><?php esc_html_e('Account name (only you see this)', 'bank-transfer-payment-gateway'); ?></label>
+											<input type="text" class="account-title" name="accounts[<?php echo esc_attr($index); ?>][title]" placeholder="<?php esc_attr_e('For example: Main account', 'bank-transfer-payment-gateway'); ?>" value="<?php echo esc_attr($account['title'] ?? ''); ?>">
 										</div>
 										<div>
-											<input type="hidden" class="<?php echo esc_attr($this->id); ?>-title unique-id" name="accounts[<?php echo esc_attr($index); ?>][unique_id]" value="<?php echo esc_attr($unique_id); ?>" readonly>
+											<input type="hidden" class="unique-id" name="accounts[<?php echo esc_attr($index); ?>][unique_id]" value="<?php echo esc_attr($unique_id); ?>" readonly>
 										</div>
 										<div class="account-input priority-name">
-											<label><?php esc_html_e('Priority', 'bank-transfer-payment-gateway'); ?></label>
+											<label><?php esc_html_e('Order of use (1 is used first)', 'bank-transfer-payment-gateway'); ?></label>
 											<input type="number" class="account-priority" name="accounts[<?php echo esc_attr($index); ?>][priority]" placeholder="<?php esc_attr_e('Priority', 'bank-transfer-payment-gateway'); ?>" value="<?php echo esc_attr($account['priority'] ?? '1'); ?>" min="1">
 										</div>
 
@@ -963,68 +1093,68 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 									<div class="add-blog">
 										<div class="account-input">
-											<label><?php esc_html_e('Checkout Title', 'bank-transfer-payment-gateway'); ?></label>
+											<label><?php esc_html_e('Checkout title (optional)', 'bank-transfer-payment-gateway'); ?></label>
 											<input type="text"
 												name="accounts[<?php echo esc_attr($index); ?>][checkout_title]"
-												placeholder="<?php esc_attr_e('Title shown to customers at checkout', 'bank-transfer-payment-gateway'); ?>"
+												placeholder="<?php esc_attr_e('Leave empty to use the title above', 'bank-transfer-payment-gateway'); ?>"
 												value="<?php echo esc_attr($account['checkout_title'] ?? ''); ?>">
 										</div>
 									</div>
 
 									<div class="add-blog">
 										<div class="account-input">
-											<label><?php esc_html_e('Checkout Subtitle', 'bank-transfer-payment-gateway'); ?></label>
+											<label><?php esc_html_e('Checkout note (optional)', 'bank-transfer-payment-gateway'); ?></label>
 											<textarea
 												class="checkout-subtitle"
 												name="accounts[<?php echo esc_attr($index); ?>][checkout_subtitle]"
-												placeholder="<?php esc_attr_e('Subtitle/description shown below the title at checkout', 'bank-transfer-payment-gateway'); ?>"
+												placeholder="<?php esc_attr_e('Leave empty to use the description above', 'bank-transfer-payment-gateway'); ?>"
 												rows="2"><?php echo esc_textarea($account['checkout_subtitle'] ?? ''); ?></textarea>
 										</div>
 									</div>
 
-									<div class="add-blog <?php echo esc_attr($this->id); ?>-production-keys">
+									<div class="add-blog bank-transfer-production-keys">
 										<div class="account-input">
-											<label><?php esc_html_e('Live Keys', 'bank-transfer-payment-gateway'); ?></label>
-											<input type="text" class="live-public-key" name="accounts[<?php echo esc_attr($index); ?>][live_public_key]" placeholder="<?php esc_attr_e('Public Key', 'bank-transfer-payment-gateway'); ?>" value="<?php echo esc_attr($account['live_public_key'] ?? ''); ?>">
+											<label><?php esc_html_e('Live keys (for real payments)', 'bank-transfer-payment-gateway'); ?></label>
+											<input type="text" class="live-public-key" name="accounts[<?php echo esc_attr($index); ?>][live_public_key]" placeholder="<?php esc_attr_e('Publishable key', 'bank-transfer-payment-gateway'); ?>" value="<?php echo esc_attr($account['live_public_key'] ?? ''); ?>">
 										</div>
 										<div class="account-input">
 											<?php
 											$live_secret_masked = !empty($account['live_secret_key']) ? (str_repeat('•', 8) . substr($account['live_secret_key'], -4)) : '';
 											?>
 											<div class="secret-key-wrapper" style="position: relative; display: flex; align-items: center;">
-												<input type="password" autocomplete="new-password" class="live-secret-key" name="accounts[<?php echo esc_attr($index); ?>][live_secret_key]" placeholder="<?php echo !empty($live_secret_masked) ? esc_attr($live_secret_masked) : esc_attr__('Secret Key', 'bank-transfer-payment-gateway'); ?>" value="" data-has-existing="<?php echo !empty($account['live_secret_key']) ? '1' : '0'; ?>" style="padding-right: 30px;">
-												<button type="button" class="toggle-secret-visibility" style="position: absolute; right: 15px; top: calc(50% - 4px); background: none; border: none; cursor: pointer; color: #555; padding: 0; outline: none;" title="<?php esc_attr_e('Show/Hide Secret Key', 'bank-transfer-payment-gateway'); ?>"><i class="fa fa-eye" aria-hidden="true"></i></button>
+												<input type="password" autocomplete="new-password" class="live-secret-key" name="accounts[<?php echo esc_attr($index); ?>][live_secret_key]" placeholder="<?php echo !empty($live_secret_masked) ? esc_attr($live_secret_masked) : esc_attr__('Secret key', 'bank-transfer-payment-gateway'); ?>" value="" data-has-existing="<?php echo !empty($account['live_secret_key']) ? '1' : '0'; ?>" style="padding-right: 30px;">
+												<button type="button" class="toggle-secret-visibility" style="position: absolute; right: 15px; top: calc(50% - 4px); background: none; border: none; cursor: pointer; color: #555; padding: 0; outline: none;" title="<?php esc_attr_e('Show or hide the secret key', 'bank-transfer-payment-gateway'); ?>"><i class="fa fa-eye" aria-hidden="true"></i></button>
 											</div>
 										</div>
 									</div>
 
 									<div class="account-checkbox">
 										<?php
-										$checkbox_id    = $this->id . '-sandbox-checkbox-' . $index;
-										$checkbox_class = $this->id . '-sandbox-checkbox';
+										$checkbox_id    = 'bank-transfer-sandbox-checkbox-' . $index;
+										$checkbox_class = 'bank-transfer-sandbox-checkbox';
 										?>
-										<input type="checkbox" class="<?php echo esc_attr($checkbox_class); ?>" id="<?php echo esc_attr($checkbox_id); ?>" name="accounts[<?php echo esc_attr($index); ?>][has_sandbox]" <?php checked($account['has_sandbox'] == 'on'); ?>>
-										<label for="<?php echo esc_attr($checkbox_id); ?>"><?php esc_html_e('Do you have the sandbox keys?', 'bank-transfer-payment-gateway'); ?></label>
+										<input type="checkbox" class="<?php echo esc_attr($checkbox_class); ?>" id="<?php echo esc_attr($checkbox_id); ?>" name="accounts[<?php echo esc_attr($index); ?>][has_sandbox]" <?php checked(($account['has_sandbox'] ?? '') === 'on'); ?>>
+										<label for="<?php echo esc_attr($checkbox_id); ?>"><?php esc_html_e('I have sandbox (test) keys', 'bank-transfer-payment-gateway'); ?></label>
 									</div>
 
 									<?php
-									$sandbox_container_id    = $this->id . '-sandbox-keys-' . $index;
-									$sandbox_container_class = $this->id . '-sandbox-keys';
-									$sandbox_display_style   = ($account['has_sandbox'] ?? '') == 'off' ? 'display: none;' : '';
+									$sandbox_container_id    = 'bank-transfer-sandbox-keys-' . $index;
+									$sandbox_container_class = 'bank-transfer-sandbox-keys';
+									$sandbox_display_style   = ($account['has_sandbox'] ?? '') === 'on' ? '' : 'display: none;';
 									?>
 									<div id="<?php echo esc_attr($sandbox_container_id); ?>" class="<?php echo esc_attr($sandbox_container_class); ?>" style="<?php echo esc_attr($sandbox_display_style); ?>">
 										<div class="add-blog">
 											<div class="account-input">
-												<label><?php esc_html_e('Sandbox Keys', 'bank-transfer-payment-gateway'); ?></label>
-												<input type="text" class="sandbox-public-key" name="accounts[<?php echo esc_attr($index); ?>][sandbox_public_key]" placeholder="<?php esc_attr_e('Public Key', 'bank-transfer-payment-gateway'); ?>" value="<?php echo esc_attr($account['sandbox_public_key'] ?? ''); ?>">
+												<label><?php esc_html_e('Sandbox keys (for testing)', 'bank-transfer-payment-gateway'); ?></label>
+												<input type="text" class="sandbox-public-key" name="accounts[<?php echo esc_attr($index); ?>][sandbox_public_key]" placeholder="<?php esc_attr_e('Publishable key', 'bank-transfer-payment-gateway'); ?>" value="<?php echo esc_attr($account['sandbox_public_key'] ?? ''); ?>">
 											</div>
 											<div class="account-input">
 												<?php
 												$sandbox_secret_masked = !empty($account['sandbox_secret_key']) ? (str_repeat('•', 8) . substr($account['sandbox_secret_key'], -4)) : '';
 												?>
 												<div class="secret-key-wrapper" style="position: relative; display: flex; align-items: center;">
-													<input type="password" autocomplete="new-password" class="sandbox-secret-key" name="accounts[<?php echo esc_attr($index); ?>][sandbox_secret_key]" placeholder="<?php echo !empty($sandbox_secret_masked) ? esc_attr($sandbox_secret_masked) : esc_attr__('Secret Key', 'bank-transfer-payment-gateway'); ?>" value="" data-has-existing="<?php echo !empty($account['sandbox_secret_key']) ? '1' : '0'; ?>" style="padding-right: 30px;">
-													<button type="button" class="toggle-secret-visibility" style="position: absolute; right: 15px; top: calc(50% - 4px); background: none; border: none; cursor: pointer; color: #555; padding: 0; outline: none;" title="<?php esc_attr_e('Show/Hide Secret Key', 'bank-transfer-payment-gateway'); ?>"><i class="fa fa-eye" aria-hidden="true"></i></button>
+													<input type="password" autocomplete="new-password" class="sandbox-secret-key" name="accounts[<?php echo esc_attr($index); ?>][sandbox_secret_key]" placeholder="<?php echo !empty($sandbox_secret_masked) ? esc_attr($sandbox_secret_masked) : esc_attr__('Secret key', 'bank-transfer-payment-gateway'); ?>" value="" data-has-existing="<?php echo !empty($account['sandbox_secret_key']) ? '1' : '0'; ?>" style="padding-right: 30px;">
+													<button type="button" class="toggle-secret-visibility" style="position: absolute; right: 15px; top: calc(50% - 4px); background: none; border: none; cursor: pointer; color: #555; padding: 0; outline: none;" title="<?php esc_attr_e('Show or hide the secret key', 'bank-transfer-payment-gateway'); ?>"><i class="fa fa-eye" aria-hidden="true"></i></button>
 												</div>
 											</div>
 										</div>
@@ -1035,8 +1165,8 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					<?php endif; ?>
 					<?php wp_nonce_field('bank_transfer_accounts_nonce_action', 'bank_transfer_accounts_nonce'); ?>
 					<div class="add-account-btn">
-						<button type="button" class="button bank_transfer-add-account bank-transfer-add-account">
-							<span>+</span> <?php esc_html_e('Add Account', 'bank-transfer-payment-gateway'); ?>
+						<button type="button" class="button bank-transfer-add-account">
+							<span>+</span> <?php esc_html_e('Add account', 'bank-transfer-payment-gateway'); ?>
 						</button>
 					</div>
 				</div>
@@ -1059,7 +1189,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$result = $this->bank_transfer_do_process_payment($order_id);
 
 		if (($result['result'] ?? '') !== 'success' && $this->is_store_api_request()) {
-			throw new \Exception(esc_html($result['message'] ?: __('Payment could not be initiated. Please try again in a moment.', 'bank-transfer-payment-gateway')));
+			throw new \Exception(esc_html($result['message'] ?: __('We could not start your bank payment. You have not been charged. Please try again in a moment, or choose another payment method.', 'bank-transfer-payment-gateway')));
 		}
 
 		return $result;
@@ -1096,7 +1226,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 
 			if (is_checkout()) {
-				wc_add_notice(__('Invalid order.', 'bank-transfer-payment-gateway'), 'error');
+				wc_add_notice(__('Something went wrong with your order. Please try again, or contact the shop.', 'bank-transfer-payment-gateway'), 'error');
 			}
 
 			return $this->build_response(
@@ -1110,7 +1240,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		if (!bank_transfer_is_gateway_order($order)) {
 			if (is_checkout()) {
-				wc_add_notice(__('Invalid payment method.', 'bank-transfer-payment-gateway'), 'error');
+				wc_add_notice(__('Bank transfer cannot be used for this order. Please choose another payment method.', 'bank-transfer-payment-gateway'), 'error');
 			}
 
 			return $this->build_response(
@@ -1180,7 +1310,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				);
 
 				if (is_checkout()) {
-					wc_add_notice(__('Too many requests. Please try again later.', 'bank-transfer-payment-gateway'), 'error');
+					wc_add_notice(__('Too many tries in a short time. Please wait a few minutes and try again.', 'bank-transfer-payment-gateway'), 'error');
 				}
 
 				return $this->build_response(
@@ -1220,7 +1350,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			if ($status === BANK_TRANSFER_RETURNED_STATUS) {
 				return $this->build_response(
 					'failure',
-					__('The bank returned the payment for this order. Please contact the shop.', 'bank-transfer-payment-gateway'),
+					__('Your bank sent back the payment for this order. Please contact the shop to arrange payment.', 'bank-transfer-payment-gateway'),
 					[],
 					409,
 					$order_id
@@ -1253,7 +1383,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				}
 
 				if ($live === 'processing' || BANK_TRANSFER_PAYMENT_ENGINE::is_in_flight($order)) {
-					$message = __('A bank transfer for this order is already in progress. Please wait for it to complete before paying again.', 'bank-transfer-payment-gateway');
+					$message = __('A bank transfer for this order is already on its way. It takes 1 to 5 business days. Please do not pay again, so you are not charged twice.', 'bank-transfer-payment-gateway');
 					if (is_checkout()) {
 						wc_add_notice($message, 'error');
 					}
@@ -1276,7 +1406,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					bank_transfer_add_unique_order_note(
 						$order,
 						'sandbox_mode',
-						__('This is a test order processed in sandbox mode.', 'bank-transfer-payment-gateway')
+						__('This is a test order. No real money moves.', 'bank-transfer-payment-gateway')
 					);
 				}
 			}
@@ -1514,9 +1644,15 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					}
 
 					if (empty($error_msg)) {
-						$error_msg = __('Payment could not be initiated. Please try again in a moment.', 'bank-transfer-payment-gateway');
+						$error_msg = __('We could not start your bank payment. You have not been charged. Please try again in a moment, or choose another payment method.', 'bank-transfer-payment-gateway');
 					}
 					$error_msg = sanitize_text_field($error_msg);
+					// RT's own wording is only shown when it is about the shopper's
+					// details (400 / 422). Anything about the shop's keys or RT's
+					// service is not the shopper's problem and is kept in the log.
+					$shopper_msg = in_array((int) $http_code, [400, 422], true)
+						? $error_msg
+						: __('Bank transfer is not available right now. You have not been charged. Please choose another payment method, or contact the shop.', 'bank-transfer-payment-gateway');
 
 					Bank_Transfer_Payment_Gateway_Logger::error(
 						$log_prefix . ' Payment API request failed',
@@ -1528,12 +1664,12 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					);
 
 					if (is_checkout()) {
-						wc_add_notice($error_msg, 'error');
+						wc_add_notice($shopper_msg, 'error');
 					}
 
 					return $this->build_response(
 						'failure',
-						$error_msg,
+						$shopper_msg,
 						[],
 						($http_code >= 400 && $http_code < 500) ? $http_code : 400,
 						$order_id
@@ -1636,14 +1772,14 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 				// The order stays pending until RT reports the debit in flight
 				// (BK-03: then on-hold) or settled (then processing/completed).
-				$order->update_status('pending', __('Payment pending.', 'bank-transfer-payment-gateway'));
+				$order->update_status('pending', __('Waiting for the customer to approve the bank transfer on RT\'s page.', 'bank-transfer-payment-gateway'));
 
 				bank_transfer_add_unique_order_note(
 					$order,
 					'payment_initiated',
 					sprintf(
 						/* translators: %s: Payment account title */
-						__('Payment initiated via Bank Transfer (%s)', 'bank-transfer-payment-gateway'),
+						__('The customer chose bank transfer (%s).', 'bank-transfer-payment-gateway'),
 						$account['title']
 					)
 				);
@@ -1715,7 +1851,12 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 	public function bank_transfer_display_test_order_tag($order) {
 		if ($order instanceof WC_Order && $order->get_meta('_is_test_order')) {
-			echo '<p><strong>' . esc_html__('Test Order', 'bank-transfer-payment-gateway') . '</strong></p>';
+			echo '<p class="form-field form-field-wide"><strong>' . esc_html__('Test order: no real money was received.', 'bank-transfer-payment-gateway') . '</strong></p>';
+		}
+		// Refunds are made in RT by design; say so where the shop owner looks for the button.
+		if ($order instanceof WC_Order && bank_transfer_is_gateway_order($order)) {
+			echo '<p class="form-field form-field-wide"><strong>' . esc_html__('Refunds:', 'bank-transfer-payment-gateway') . '</strong> ' .
+				esc_html__('to refund this bank payment, open it in your RT account and refund it there. The Refund button here only records a refund in WooCommerce; it does not send money back.', 'bank-transfer-payment-gateway') . '</p>';
 		}
 	}
 
@@ -1886,7 +2027,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	}
 
 	public function bank_transfer_woocommerce_not_active_notice() {
-		echo '<div class="error"><p>' . esc_html__('Bank Transfer Payment Gateway requires WooCommerce to be installed and active.', 'bank-transfer-payment-gateway') . '</p></div>';
+		echo '<div class="error"><p>' . esc_html__('RT Bank Transfer needs WooCommerce. Install and activate WooCommerce first.', 'bank-transfer-payment-gateway') . '</p></div>';
 	}
 
 	public function payment_fields() {
@@ -1920,12 +2061,12 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		if ($this->get_option('show_consent_checkbox') === 'yes') {
 			$nonce = isset($_POST['bank_transfer_nonce']) ? sanitize_text_field(wp_unslash($_POST['bank_transfer_nonce'])) : '';
 			if (empty($nonce) || !wp_verify_nonce($nonce, 'bank_transfer_payment')) {
-				wc_add_notice(__('Nonce verification failed. Please try again.', 'bank-transfer-payment-gateway'), 'error');
+				wc_add_notice(__('This page was open for too long. Please refresh it and try again.', 'bank-transfer-payment-gateway'), 'error');
 				return false;
 			}
 			$consent = isset($_POST['bank_transfer_consent']) ? sanitize_text_field(wp_unslash($_POST['bank_transfer_consent'])) : '';
 			if ($consent !== 'on') {
-				wc_add_notice(__('You must consent to the collection of your data to process this payment.', 'bank-transfer-payment-gateway'), 'error');
+				wc_add_notice(__('Please tick the consent box to pay by bank transfer.', 'bank-transfer-payment-gateway'), 'error');
 				return false;
 			}
 		}
@@ -1958,10 +2099,54 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		wp_enqueue_style('bank-transfer-font-awesome', plugins_url('../assets/css/font-awesome.css', __FILE__), [], filemtime(plugin_dir_path(__FILE__) . '../assets/css/font-awesome.css'), 'all');
 		wp_enqueue_style('bank-transfer-admin-css', plugins_url('../assets/css/admin.css', __FILE__), [], filemtime(plugin_dir_path(__FILE__) . '../assets/css/admin.css'), 'all');
 		wp_enqueue_script('bank-transfer-admin-script', plugins_url('../assets/js/bank-transfer-admin.js', __FILE__), ['jquery'], filemtime(plugin_dir_path(__FILE__) . '../assets/js/bank-transfer-admin.js'), true);
+		$status_texts = [];
+		foreach (bank_transfer_account_status_texts() as $status_key => $status_text) {
+			$status_texts[$status_key] = ['label' => $status_text[0], 'help' => $status_text[1]];
+		}
 		wp_localize_script('bank-transfer-admin-script', 'bank_transfer_admin_data', [
-			'ajax_url'   => admin_url('admin-ajax.php'),
-			'nonce'      => wp_create_nonce('bank_transfer_sync_nonce'),
-			'gateway_id' => $this->id,
+			'ajax_url'    => admin_url('admin-ajax.php'),
+			'nonce'       => wp_create_nonce('bank_transfer_sync_nonce'),
+			'gateway_id'  => $this->id,
+			'sync_action' => $this->id . '_manual_sync',
+			'statuses'    => $status_texts,
+			'i18n'        => [
+				'sandbox'            => __('Sandbox', 'bank-transfer-payment-gateway'),
+				'live'               => __('Live', 'bank-transfer-payment-gateway'),
+				'new_account'        => __('New account', 'bank-transfer-payment-gateway'),
+				'account_name'       => __('Account name (only you see this)', 'bank-transfer-payment-gateway'),
+				'account_name_hint'  => __('For example: Main account', 'bank-transfer-payment-gateway'),
+				'order_of_use'       => __('Order of use (1 is used first)', 'bank-transfer-payment-gateway'),
+				'checkout_title'     => __('Checkout title (optional)', 'bank-transfer-payment-gateway'),
+				'checkout_title_hint' => __('Leave empty to use the title above', 'bank-transfer-payment-gateway'),
+				'checkout_note'      => __('Checkout note (optional)', 'bank-transfer-payment-gateway'),
+				'checkout_note_hint' => __('Leave empty to use the description above', 'bank-transfer-payment-gateway'),
+				'live_keys'          => __('Live keys (for real payments)', 'bank-transfer-payment-gateway'),
+				'sandbox_keys'       => __('Sandbox keys (for testing)', 'bank-transfer-payment-gateway'),
+				'publishable_key'    => __('Publishable key', 'bank-transfer-payment-gateway'),
+				'secret_key'         => __('Secret key', 'bank-transfer-payment-gateway'),
+				'show_hide'          => __('Show or hide the secret key', 'bank-transfer-payment-gateway'),
+				'have_sandbox'       => __('I have sandbox (test) keys', 'bank-transfer-payment-gateway'),
+				'remove'             => __('Remove this account', 'bank-transfer-payment-gateway'),
+				'confirm_remove'     => __('Remove this account? Its keys are deleted from this site when you press Save changes.', 'bank-transfer-payment-gateway'),
+				'removed_last'       => __('No payment account is left. Press Save changes to confirm; bank transfer will be hidden at checkout until you add one.', 'bank-transfer-payment-gateway'),
+				'new_account_hint'   => __('Paste your keys, then press Save changes.', 'bank-transfer-payment-gateway'),
+				'checking'           => __('Checking with RT...', 'bank-transfer-payment-gateway'),
+				'check_done'         => __('Checked with RT.', 'bank-transfer-payment-gateway'),
+				'check_failed'       => __('We couldn\'t connect to RT with these keys. Check that the publishable and secret keys are from the same RT account and the same mode (Sandbox or Live).', 'bank-transfer-payment-gateway'),
+				'check_unreachable'  => __('We could not reach RT. Check your internet connection and try again in a moment.', 'bank-transfer-payment-gateway'),
+				'fix_errors'         => __('Some boxes need your attention. Fix the ones marked in red, then save again.', 'bank-transfer-payment-gateway'),
+				'need_title'         => __('Enter a name for this payment method. Shoppers see it at checkout.', 'bank-transfer-payment-gateway'),
+				'need_description'   => __('Add a short note for shoppers, for example how long bank payments take.', 'bank-transfer-payment-gateway'),
+				'need_name'          => __('Give this account a name, for example "Main account".', 'bank-transfer-payment-gateway'),
+				'name_used'          => __('Another account already uses this name. Choose a different one.', 'bank-transfer-payment-gateway'),
+				'need_order'         => __('Enter a number. 1 is used first.', 'bank-transfer-payment-gateway'),
+				'order_used'         => __('Another account already uses this number. Give each account its own.', 'bank-transfer-payment-gateway'),
+				'need_keys'          => __('Add your sandbox keys to test, or your live keys to take real payments.', 'bank-transfer-payment-gateway'),
+				'need_both_live'     => __('Paste both live keys, or leave both boxes empty to use sandbox keys only.', 'bank-transfer-payment-gateway'),
+				'need_both_sandbox'  => __('Paste both sandbox keys, or untick "I have sandbox (test) keys".', 'bank-transfer-payment-gateway'),
+				'key_used'           => __('This key is already used in another box on this page. Each box needs its own key.', 'bank-transfer-payment-gateway'),
+				'same_keys'          => __('The publishable key and the secret key are the same. Paste your secret key here.', 'bank-transfer-payment-gateway'),
+			],
 		]);
 	}
 
@@ -1970,10 +2155,21 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$gateway_id = $this->id;
 		$this->selected_account_for_display = null;
 
+		// Nothing to decide when this method is not on offer (switched off,
+		// or already removed by WooCommerce or another plugin).
+		if (!is_array($available_gateways) || !isset($available_gateways[$gateway_id])) {
+			return $available_gateways;
+		}
+
+		// Never offer a method the shop has switched off.
+		if ('yes' !== $this->enabled) {
+			return $this->hide_gateway($available_gateways, $gateway_id);
+		}
+
 		// =====================================================
 		// STEP 1: SAFE CART CHECK
 		// =====================================================
-		if (!WC()->cart) {
+		if (!function_exists('WC') || !WC()->cart) {
 			return $available_gateways;
 		}
 
@@ -2048,7 +2244,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				"Bank Transfer Gateway Decision",
 				[
 					'result' => 'HIDDEN',
-					'reason' => 'No merchant accounts configured',
+					'reason' => 'No approved payment account for the current mode',
 					'items'  => $items,
 					'total'  => $amount,
 					'flow'   => $flow
@@ -2069,7 +2265,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		// STEP 9: EVALUATION
 		// =====================================================
 		$selected = null;
-		$reason   = 'No eligible merchant account';
+		$reason   = 'No eligible payment account';
 
 		foreach ($accounts as $account) {
 			$public = $this->sandbox
@@ -2085,7 +2281,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			}
 
 			$selected = $account;
-			$reason   = 'Valid merchant account found';
+			$reason   = 'Valid payment account found';
 			break;
 		}
 
@@ -2118,6 +2314,26 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		return $available_gateways;
 	}
+
+	/**
+	 * Take this payment method out of the list a shopper can choose from.
+	 *
+	 * Used when bank transfer cannot take a payment right now: it is switched
+	 * off, no payment account is saved, or no saved account is approved for
+	 * the current mode (test or live). Every other payment method is left
+	 * exactly as it was.
+	 *
+	 * @param array  $available_gateways Gateways WooCommerce is about to offer.
+	 * @param string $gateway_id         This gateway's id.
+	 * @return array
+	 */
+	private function hide_gateway($available_gateways, $gateway_id) {
+		if (is_array($available_gateways) && isset($available_gateways[$gateway_id])) {
+			unset($available_gateways[$gateway_id]);
+		}
+		return $available_gateways;
+	}
+
 	/**
 	 * POST a JSON body to RT, signed with the secret (never sent), and cache
 	 * the decoded answer.

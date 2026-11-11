@@ -56,6 +56,16 @@ class BANK_TRANSFER_PAYMENT_ENGINE
 
         try {
 
+            // Read the order again now that we hold the lock: another request
+            // may have changed it while we were waiting (BANK-03).
+            $fresh_order = wc_get_order($order_id);
+            if ($fresh_order && is_a($fresh_order, 'WC_Order')) {
+                $order = $fresh_order;
+            }
+            if (in_array($event_type, ['api_update', 'webhook_update'], true) && self::is_duplicate_event($order_id, $event_id)) {
+                return self::safe_response($order, 'duplicate_event_ignored', self::get_state($order));
+            }
+
             $current_state = self::normalize_state(self::get_state($order));
             $new_state     = self::normalize_state(self::resolve_state($payload));
 
@@ -75,6 +85,16 @@ class BANK_TRANSFER_PAYMENT_ENGINE
                  * transition out of success; the map below never allows it.
                  */
                 if ($is_signed && in_array($new_state, ['returned', 'failed'], true)) {
+                    // The message must be about the payment that paid this
+                    // order. A late "failed" or "returned" for an earlier
+                    // link must not take a paid order out of fulfilment.
+                    $event_token = (string) ($payload['payment_token'] ?? '');
+                    $paid_token  = (string) $order->get_meta('_bank_transfer_pay_id');
+                    if ($event_token !== '' && $paid_token !== '' && !hash_equals($paid_token, $event_token)) {
+                        self::note_superseded_link($order, $event_token, $new_state);
+                        self::mark_event($order_id, $event_id);
+                        return self::safe_response($order, 'superseded_link_ignored', 'success');
+                    }
                     $new_state      = 'returned';
                     $can_transition = true;
                 } elseif ($new_state === 'success') {
@@ -96,8 +116,48 @@ class BANK_TRANSFER_PAYMENT_ENGINE
                     return self::safe_response($order, 'final_success_locked', 'success');
                 }
             } elseif ($new_state === 'returned') {
-                // A return only makes sense for money that arrived.
-                return self::safe_response($order, 'invalid_transition_blocked', $current_state);
+                if (!$is_signed) {
+                    // Only RT's signed message may record a return.
+                    return self::safe_response($order, 'invalid_transition_blocked', $current_state);
+                }
+
+                /*
+                 * RT says the bank sent this payment back, but this shop never
+                 * saw it as paid (the "paid" message was missed, or the bank
+                 * returned the debit before it settled). The message is true
+                 * and signed, so it is accepted and recorded once. Answering
+                 * "conflict" would make RT repeat it forever while the order
+                 * sat waiting for money that is not coming.
+                 */
+                $token = (string) ($payload['payment_token'] ?? '');
+                if (self::return_already_recorded($order, $token)) {
+                    self::mark_event($order_id, $event_id);
+                    return self::safe_response($order, 'return_already_recorded', self::get_state($order));
+                }
+
+                self::record_return_without_payment($order, $payload, $event_type);
+                self::mark_event($order_id, $event_id);
+                self::push_timeline_event($order, 'returned', $event_type, $payload);
+                self::sync_order_notes($order);
+
+                return self::safe_response($order, 'return_recorded', self::get_state($order));
+            }
+
+            /*
+             * BANK-02: a shopper can be given a new payment link while an older
+             * one is still open. "Failed", "cancelled" or "expired" for an
+             * older link says nothing about the payment in progress on the
+             * current link, so it must not fail the order or replace the
+             * payment id being watched.
+             */
+            if (in_array($new_state, ['failed', 'cancelled', 'expired'], true)) {
+                $token  = (string) ($payload['payment_token'] ?? '');
+                $active = (string) $order->get_meta('_bank_transfer_active_pay_id');
+                if ($token !== '' && $active !== '' && !hash_equals($active, $token)) {
+                    self::note_superseded_link($order, $token, $new_state);
+                    self::mark_event($order_id, $event_id);
+                    return self::safe_response($order, 'superseded_link_ignored', $current_state);
+                }
             }
 
             if ($can_transition === null) {
@@ -268,7 +328,7 @@ class BANK_TRANSFER_PAYMENT_ENGINE
                 if ($order->has_status(['pending', 'failed', 'cancelled', 'checkout-draft'])) {
                     $order->update_status(
                         'on-hold',
-                        __('Bank transfer authorised by the customer; the ACH debit is in flight. The order is on hold until RT confirms the funds settled.', 'bank-transfer-payment-gateway')
+                        __('The customer approved the bank transfer. The money is on its way and takes 1 to 5 business days to arrive. The order stays on hold until RT confirms it has arrived. Do not ship yet.', 'bank-transfer-payment-gateway')
                     );
                 }
             } elseif ($state === 'returned') {
@@ -283,7 +343,14 @@ class BANK_TRANSFER_PAYMENT_ENGINE
         $order->update_meta_data('_bank_transfer_last_event_time', current_time('mysql'));
 
         if (!empty($payment_token) && $state !== 'returned') {
-            $order->update_meta_data('_bank_transfer_pay_id', $payment_token);
+            $active = (string) $order->get_meta('_bank_transfer_active_pay_id');
+            if (in_array($state, ['success', 'processing'], true)) {
+                // This is the payment that is actually moving: watch it.
+                $order->update_meta_data('_bank_transfer_pay_id', $payment_token);
+                $order->update_meta_data('_bank_transfer_active_pay_id', $payment_token);
+            } elseif ($active === '' || hash_equals($active, (string) $payment_token)) {
+                $order->update_meta_data('_bank_transfer_pay_id', $payment_token);
+            }
         }
 
         if ($state === 'success') {
@@ -307,7 +374,7 @@ class BANK_TRANSFER_PAYMENT_ENGINE
         if ($order->get_meta('_is_test_order') && bank_transfer_is_production_environment()) {
             $order->update_status(
                 'on-hold',
-                __('SANDBOX test payment reported as successful. No real funds were received. This site is configured as a production site, so the order was placed on hold instead of being marked paid.', 'bank-transfer-payment-gateway')
+                __('This was a test payment. No real money was received. Because this is a live shop, the order was put on hold instead of being marked paid. Do not ship it.', 'bank-transfer-payment-gateway')
             );
             $order->update_meta_data('_bank_transfer_sandbox_success_held', 'yes');
             return;
@@ -332,12 +399,12 @@ class BANK_TRANSFER_PAYMENT_ENGINE
         $reason      = sanitize_text_field((string) ($payload['failure_reason'] ?? ''));
         $token       = sanitize_text_field((string) ($payload['payment_token'] ?? ''));
 
-        $detail = $return_code !== '' ? sprintf(' (%s)', $return_code) : '';
+        /* translators: %s: bank return code such as R01 */
+        $detail = $return_code !== '' ? sprintf(__(' (bank reference %s)', 'bank-transfer-payment-gateway'), $return_code) : '';
         $note   = sprintf(
-            /* translators: 1: return code in parentheses or empty, 2: payment id */
-            __('The bank returned / reversed the settled payment%1$s for payment ID %2$s. The funds are no longer in your account. Review the order before fulfilling or shipping it.', 'bank-transfer-payment-gateway'),
-            $detail,
-            $token
+            /* translators: %1$s: bank reference in parentheses, or empty */
+            __('The bank returned this bank transfer payment%1$s. The money is no longer in your RT account. Do not ship this order until you have checked it.', 'bank-transfer-payment-gateway'),
+            $detail
         );
         if ($reason !== '') {
             $note .= ' ' . $reason;
@@ -357,6 +424,106 @@ class BANK_TRANSFER_PAYMENT_ENGINE
             $note,
             $order
         );
+    }
+
+    /**
+     * Whether a return for this payment id is already on the order.
+     */
+    private static function return_already_recorded($order, $token)
+    {
+        if ($order->get_meta('_bank_transfer_payment_returned') !== 'yes') {
+            return false;
+        }
+        $recorded = (string) $order->get_meta('_bank_transfer_returned_pay_id');
+        return $recorded === '' || $token === '' || hash_equals($recorded, (string) $token);
+    }
+
+    /**
+     * RT reported a bank return for an order this shop never saw as paid.
+     *
+     * The return is written on the order with a clear note and the shop owner
+     * is told. An order WooCommerce counts as paid (for example one moved to
+     * Processing by hand) goes to "Payment returned"; an order still waiting
+     * for the money is marked Failed, because the money is not coming. An
+     * order already cancelled or refunded keeps its status.
+     */
+    private static function record_return_without_payment($order, $payload, $event_type)
+    {
+        $return_code = sanitize_text_field((string) ($payload['return_code'] ?? ''));
+        $reason      = sanitize_text_field((string) ($payload['failure_reason'] ?? ''));
+        $token       = sanitize_text_field((string) ($payload['payment_token'] ?? ''));
+
+        $was_paid = $order->is_paid() || $order->has_status(['processing', 'completed']);
+
+        $note = $was_paid
+            ? __('The bank returned this bank transfer payment. The money is no longer in your RT account. Do not ship this order until you have checked it. To take payment again, ask the customer to pay with a new link or another method.', 'bank-transfer-payment-gateway')
+            : __('The bank returned this bank transfer payment before this shop had marked the order as paid. No money was received for this order. Do not ship it. The customer can pay again from their order page.', 'bank-transfer-payment-gateway');
+
+        $details = [];
+        if ($reason !== '') {
+            /* translators: %s: reason given by the bank */
+            $details[] = sprintf(__('Reason from the bank: %s.', 'bank-transfer-payment-gateway'), rtrim($reason, '.'));
+        }
+        if ($return_code !== '') {
+            /* translators: %s: bank return code such as R01 */
+            $details[] = sprintf(__('Bank reference: %s.', 'bank-transfer-payment-gateway'), $return_code);
+        }
+        if (!empty($details)) {
+            $note .= ' ' . implode(' ', $details);
+        }
+
+        $order->update_meta_data('_bank_transfer_payment_returned', 'yes');
+        $order->update_meta_data('_bank_transfer_return_code', $return_code);
+        $order->update_meta_data('_bank_transfer_returned_pay_id', $token);
+        $order->update_meta_data('_bank_transfer_returned_at', current_time('mysql'));
+        $order->update_meta_data('_bank_transfer_last_event', $event_type);
+        $order->update_meta_data('_bank_transfer_last_event_time', current_time('mysql'));
+
+        if ($was_paid) {
+            $order->update_meta_data('_bank_transfer_state', 'returned');
+            $order->update_status(BANK_TRANSFER_RETURNED_STATUS, $note);
+        } elseif ($order->has_status(['cancelled', 'refunded', 'failed'])) {
+            $order->update_meta_data('_bank_transfer_state', $order->has_status('cancelled') ? 'cancelled' : 'failed');
+            $order->add_order_note($note);
+            $order->save();
+        } else {
+            $order->update_meta_data('_bank_transfer_state', 'failed');
+            $order->update_status('failed', $note);
+        }
+
+        bank_transfer_notify_admin(
+            sprintf(
+                /* translators: %s: order number */
+                __('Bank transfer payment returned for order #%s', 'bank-transfer-payment-gateway'),
+                $order->get_order_number()
+            ),
+            $note,
+            $order
+        );
+    }
+
+    /**
+     * One order note the first time an older payment link reports that it
+     * closed while a newer link is in use.
+     */
+    private static function note_superseded_link($order, $token, $state)
+    {
+        $noted = $order->get_meta('_bank_transfer_superseded_links');
+        $noted = is_array($noted) ? array_values(array_filter($noted, 'is_string')) : [];
+        if (in_array($token, $noted, true)) {
+            return;
+        }
+        $noted[] = $token;
+        $order->update_meta_data('_bank_transfer_superseded_links', $noted);
+        $order->add_order_note(
+            __('An older payment link for this order has closed. The order was not changed, because the customer has a newer payment link.', 'bank-transfer-payment-gateway')
+        );
+        $order->save();
+
+        Bank_Transfer_Payment_Gateway_Logger::info('Ignored a status for a superseded payment link.', [
+            'order_id' => $order->get_id(),
+            'state'    => $state,
+        ]);
     }
 
     /**
@@ -387,7 +554,7 @@ class BANK_TRANSFER_PAYMENT_ENGINE
             ),
             sprintf(
                 /* translators: 1: payment id of the duplicate, 2: payment id the order was paid with */
-                __('RT reports a second settled payment (payment ID %1$s) for this order, which was already paid with payment ID %2$s. The order was NOT changed. The customer has paid twice; refund the duplicate from your RT dashboard.', 'bank-transfer-payment-gateway'),
+                __('The customer has paid for this order twice (RT payment references %1$s and %2$s). The order was not changed. Refund the extra payment in your RT account.', 'bank-transfer-payment-gateway'),
                 $token,
                 (string) $order->get_meta('_bank_transfer_pay_id')
             ),
@@ -491,7 +658,8 @@ class BANK_TRANSFER_PAYMENT_ENGINE
 
                 $order->add_order_note(
                     self::build_order_note(
-                        "Payment Failed (Attempt {$attempt_number})",
+                        /* translators: %d: attempt number */
+                        sprintf(__('Payment attempt %d did not go through. No money was received.', 'bank-transfer-payment-gateway'), $attempt_number),
                         $event['payment_token'] ?? '',
                         $event['event_type'] ?? ''
                     )
@@ -514,7 +682,7 @@ class BANK_TRANSFER_PAYMENT_ENGINE
 
             $order->add_order_note(
                 self::build_order_note(
-                    'Payment completed successfully.',
+                    __('Payment received. The money has arrived in your RT account.', 'bank-transfer-payment-gateway'),
                     $success_event['payment_token'] ?? '',
                     $success_event['event_type'] ?? ''
                 )
@@ -536,7 +704,7 @@ class BANK_TRANSFER_PAYMENT_ENGINE
 
             $order->add_order_note(
                 self::build_order_note(
-                    'Payment was cancelled.',
+                    __('The customer cancelled the payment. No money was received.', 'bank-transfer-payment-gateway'),
                     $cancel_event['payment_token'] ?? '',
                     $cancel_event['event_type'] ?? ''
                 )

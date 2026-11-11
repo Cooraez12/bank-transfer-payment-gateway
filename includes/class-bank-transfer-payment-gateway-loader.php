@@ -129,9 +129,9 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 		if (!$error) return;
 
 		$messages = [
-			'failed'    => 'Payment failed. Please try again.',
-			'cancelled' => 'Payment was cancelled.',
-			'expired'   => 'Payment session expired. Please try again.'
+			'failed'    => __('Your bank payment did not go through, so you have not been charged. Please try again or choose another payment method.', 'bank-transfer-payment-gateway'),
+			'cancelled' => __('You cancelled the bank payment, so you have not been charged. You can try again when you are ready.', 'bank-transfer-payment-gateway'),
+			'expired'   => __('The payment page was open for too long and closed, so you have not been charged. Please place the order again.', 'bank-transfer-payment-gateway'),
 		];
 
 		// Clear error immediately
@@ -221,7 +221,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 
 		if ($count >= $max_requests) {
 			wp_send_json_error([
-				'message'      => 'Too many requests. Please slow down.',
+				'message'      => __('Too many tries in a short time. Please wait a minute and try again.', 'bank-transfer-payment-gateway'),
 				'stop_polling' => true,
 			], 429);
 			wp_die();
@@ -318,7 +318,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 
 			wp_send_json_error([
 				'reload'       => false,
-				'message'      => 'Security check failed.',
+				'message'      => __('We could not confirm this order. Please refresh the page and try again.', 'bank-transfer-payment-gateway'),
 				'stop_polling' => true
 			], 403);
 			wp_die();
@@ -370,7 +370,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 			wp_send_json_error([
 				'reload'       => false,
 				'stop_polling' => $stop,
-				'message'      => $outcome['error'],
+				'message'      => __('We could not check your payment just now. Please wait a moment; this page will try again.', 'bank-transfer-payment-gateway'),
 			], $http >= 400 && $http < 600 ? $http : 500);
 			wp_die();
 		}
@@ -380,7 +380,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 		if (!$payment_status) {
 			wp_send_json([
 				'success' => false,
-				'message' => 'Payment status is currently unavailable.',
+				'message' => __('We could not check your payment just now. Please wait a moment; this page will try again.', 'bank-transfer-payment-gateway'),
 				'data' => [
 					'payment_status' => 'pending',
 					'order_status'   => $order->get_status(),
@@ -407,12 +407,12 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 		$is_success = ($state === 'success');
 
 		$message = match ($state) {
-			'success'    => 'Your payment was completed successfully.',
-			'failed'     => 'Payment failed. Please try again or use another method.',
-			'cancelled'  => 'You cancelled the payment.',
-			'expired'    => 'The payment session expired. Please try again.',
-			'processing' => 'Your bank transfer has been authorised and is being processed.',
-			default      => 'We couldn’t confirm your payment status yet. If needed, you can try placing the order again after checking your order status.'
+			'success'    => __('Your payment is complete. Thank you.', 'bank-transfer-payment-gateway'),
+			'failed'     => __('Your bank payment did not go through, so you have not been charged. Please try again or choose another payment method.', 'bank-transfer-payment-gateway'),
+			'cancelled'  => __('You cancelled the bank payment, so you have not been charged.', 'bank-transfer-payment-gateway'),
+			'expired'    => __('The payment page was open for too long and closed, so you have not been charged. Please place the order again.', 'bank-transfer-payment-gateway'),
+			'processing' => __('Your bank transfer is on its way. It takes 1 to 5 business days to arrive. We will email you when your order is confirmed.', 'bank-transfer-payment-gateway'),
+			default      => __('We have not heard back about your payment yet. Please check your order page in a few minutes before trying again, so you are not charged twice.', 'bank-transfer-payment-gateway')
 		};
 
 		// A settled payment and an authorised (in-flight) debit both send the
@@ -483,20 +483,25 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 	{
 		$logger_context = ['source' => 'bank-transfer-payment-gateway'];
 
+		$this->last_sync = ['ok' => true, 'reason' => '', 'statuses' => []];
+
 		$accounts = bank_transfer_get_accounts();
 
 		if (empty($accounts)) {
 			Bank_Transfer_Payment_Gateway_Logger::warning('No payment accounts found or the account format is invalid. Sync aborted.', $logger_context);
+			$this->last_sync = ['ok' => false, 'reason' => 'no_accounts', 'statuses' => []];
 			return [];
 		}
 
 		$accountsData = [];
-		$updated      = false;
+		// Status changes decided here, keyed by "<mode>|<public key>". They are
+		// merged into a fresh copy of the option just before saving, so a key
+		// the shop changed while RT was answering is never put back.
+		$changes = [];
 
-		foreach ($accounts as &$account) {
+		foreach ($accounts as $account) {
 			$isSandboxEnabled = isset($account['has_sandbox']) && $account['has_sandbox'] === 'on';
 
-			// Prepare both live and sandbox entries
 			if (!empty($account['live_public_key']) && !empty($account['live_secret_key'])) {
 				$accountsData[] = array_merge([
 					'account_name' => $account['title'] ?? '',
@@ -505,35 +510,24 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 				], bank_transfer_account_signature($account['live_public_key'], $account['live_secret_key']));
 			}
 
-			if ($isSandboxEnabled) {
-				if (!empty($account['sandbox_public_key']) && !empty($account['sandbox_secret_key'])) {
-					$accountsData[] = array_merge([
-						'account_name' => $account['title'] ?? '',
-						'public_key'   => $account['sandbox_public_key'],
-						'mode'         => 'sandbox',
-					], bank_transfer_account_signature($account['sandbox_public_key'], $account['sandbox_secret_key']));
-				} else {
-					if (($account['sandbox_status'] ?? '') !== 'invalid') {
-						$account['sandbox_status'] = 'invalid';
-						$updated = true;
-					}
-				}
-			} else {
-				if (($account['sandbox_status'] ?? '') !== 'inactive') {
-					$account['sandbox_status'] = 'inactive';
-					$updated = true;
-				}
+			if ($isSandboxEnabled && !empty($account['sandbox_public_key']) && !empty($account['sandbox_secret_key'])) {
+				$accountsData[] = array_merge([
+					'account_name' => $account['title'] ?? '',
+					'public_key'   => $account['sandbox_public_key'],
+					'mode'         => 'sandbox',
+				], bank_transfer_account_signature($account['sandbox_public_key'], $account['sandbox_secret_key']));
 			}
 		}
-		unset($account);
 
 		if (empty($accountsData)) {
 			Bank_Transfer_Payment_Gateway_Logger::warning('No valid credentials found in any payment account. Sync skipped.', $logger_context);
+			$this->last_sync = ['ok' => false, 'reason' => 'no_keys', 'statuses' => []];
 			return [];
 		}
 
-		$url  = esc_url($this->get_api_url('/sync-account-status'));
-		$body = wp_json_encode(['accounts' => array_slice($accountsData, 0, 10)]);
+		$sent = array_slice($accountsData, 0, 10);
+		$url  = esc_url_raw($this->get_api_url('/sync-account-status'));
+		$body = wp_json_encode(['accounts' => $sent]);
 
 		$response = wp_remote_post($url, [
 			'headers'   => [
@@ -547,11 +541,12 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 
 		if (is_wp_error($response)) {
 			Bank_Transfer_Payment_Gateway_Logger::error('Unable to connect to the sync service. Please check the server connection or endpoint.', $logger_context);
+			$this->last_sync = ['ok' => false, 'reason' => 'unreachable', 'statuses' => []];
 			$this->sync_pending_orders();
 			return [];
 		}
 
-		$response_code = wp_remote_retrieve_response_code($response);
+		$response_code = (int) wp_remote_retrieve_response_code($response);
 		if ($response_code < 200 || $response_code >= 300) {
 			Bank_Transfer_Payment_Gateway_Logger::warning(
 				'Sync API returned a non-2xx HTTP status. Sync aborted.',
@@ -562,71 +557,60 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 					],
 				])
 			);
+			// RT answered but refused the request. Accounts that were never
+			// accepted are marked so the settings screen does not look fine.
+			foreach ($sent as $entry) {
+				$changes[$entry['mode'] . '|' . $entry['public_key']] = ['status' => 'not_connected', 'only_if_unconfirmed' => true];
+			}
+			$summary = $this->bank_transfer_store_account_statuses($changes);
+			$this->last_sync = [
+				'ok'       => false,
+				'reason'   => in_array($response_code, [400, 401, 403, 422], true) ? 'refused' : 'unreachable',
+				'statuses' => $summary,
+			];
 			$this->sync_pending_orders();
-			return [];
+			return $summary;
 		}
 
-		$response_body = wp_remote_retrieve_body($response);
-		$response_data = json_decode($response_body, true);
+		$response_data = json_decode(wp_remote_retrieve_body($response), true);
 
-		$statusSummary = [];
-
-		if (!empty($response_data['data'])) {
+		if (is_array($response_data) && !empty($response_data['data']) && is_array($response_data['data'])) {
 			foreach ($response_data['data'] as $statusData) {
 				if (
+					is_array($statusData) &&
 					isset($statusData['mode'], $statusData['public_key'], $statusData['status']) &&
-					!empty($statusData['status']) &&
-					(empty($statusData['message']) || stripos($statusData['message'], 'missing required fields') === false)
+					is_string($statusData['status']) && $statusData['status'] !== '' &&
+					(empty($statusData['message']) || stripos((string) $statusData['message'], 'missing required fields') === false)
 				) {
-					foreach ($accounts as &$account) {
-						if (
-							$statusData['mode'] === 'live' &&
-							($account['live_public_key'] ?? '') === $statusData['public_key']
-						) {
-							$account['live_status'] = $statusData['status'];
-							$updated = true;
-							$statusSummary[] = [
-								'title'  => $account['title'] ?? 'N/A',
-								'mode'   => $statusData['mode'],
-								'status' => $statusData['status'],
-							];
-						}
-
-						if (
-							$statusData['mode'] === 'sandbox' &&
-							($account['sandbox_public_key'] ?? '') === $statusData['public_key']
-						) {
-							$account['sandbox_status'] = $statusData['status'];
-							$updated = true;
-							$statusSummary[] = [
-								'title'  => $account['title'] ?? 'N/A',
-								'mode'   => $statusData['mode'],
-								'status' => $statusData['status'],
-							];
-						}
-					}
-					unset($account);
+					$mode = strtolower(sanitize_key((string) $statusData['mode']));
+					$changes[$mode . '|' . (string) $statusData['public_key']] = [
+						'status' => sanitize_key(strtolower((string) $statusData['status'])),
+					];
 				}
 			}
 		}
 
-		if (!empty($statusSummary)) {
-			if ($updated) {
-				update_option(BANK_TRANSFER_ACCOUNTS_OPTION, $accounts);
-
-				Bank_Transfer_Payment_Gateway_Logger::info('Payment account statuses were successfully updated after syncing.', [
-					'source'  => 'bank-transfer-payment-gateway',
-					'context' => ['updated_accounts' => $statusSummary],
-				]);
-			} else {
-				Bank_Transfer_Payment_Gateway_Logger::info('Payment accounts were checked, but no updates were necessary.', [
-					'source'  => 'bank-transfer-payment-gateway',
-					'context' => ['checked_accounts' => $statusSummary],
-				]);
+		// Every account we asked about must come back with an answer.
+		$unanswered = 0;
+		foreach ($sent as $entry) {
+			if (!isset($changes[$entry['mode'] . '|' . $entry['public_key']])) {
+				$changes[$entry['mode'] . '|' . $entry['public_key']] = ['status' => 'not_connected', 'only_if_unconfirmed' => true];
+				$unanswered++;
 			}
-		} else {
-			Bank_Transfer_Payment_Gateway_Logger::info('Sync completed. No account status data was returned from the server.', $logger_context);
 		}
+
+		$statusSummary = $this->bank_transfer_store_account_statuses($changes);
+
+		$this->last_sync = [
+			'ok'       => ($unanswered === 0),
+			'reason'   => ($unanswered === 0) ? '' : 'refused',
+			'statuses' => $statusSummary,
+		];
+
+		Bank_Transfer_Payment_Gateway_Logger::info('Payment account statuses checked with RT.', [
+			'source'  => 'bank-transfer-payment-gateway',
+			'context' => ['checked_accounts' => $statusSummary],
+		]);
 
 		// Account statuses are refreshed; now reconcile any order still waiting for payment.
 		$this->sync_pending_orders();
@@ -634,6 +618,120 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 		$this->bank_transfer_send_plugin_status(1, 1);
 
 		return $statusSummary;
+	}
+
+	/**
+	 * Result of the last account check in this request.
+	 *
+	 * @var array
+	 */
+	private $last_sync = ['ok' => true, 'reason' => '', 'statuses' => []];
+
+	/**
+	 * Save new account statuses without touching anything else.
+	 *
+	 * The accounts option is read again here and only the status of an account
+	 * whose public key still matches is changed.
+	 *
+	 * @param array $changes "<mode>|<public key>" => ['status' => string, 'only_if_unconfirmed' => bool]
+	 * @return array Summary rows: title, mode, status.
+	 */
+	private function bank_transfer_store_account_statuses(array $changes)
+	{
+		$accounts = bank_transfer_get_accounts();
+		$summary  = [];
+		$updated  = false;
+
+		foreach ($accounts as &$account) {
+			if (!is_array($account)) {
+				continue;
+			}
+			$has_sandbox = isset($account['has_sandbox']) && $account['has_sandbox'] === 'on';
+			foreach (['live', 'sandbox'] as $mode) {
+				$public_key = (string) ($account[$mode . '_public_key'] ?? '');
+				$status_key = $mode . '_status';
+				$current    = strtolower((string) ($account[$status_key] ?? ''));
+
+				if ($public_key === '' || empty($account[$mode . '_secret_key']) || ($mode === 'sandbox' && !$has_sandbox)) {
+					$new = 'inactive';
+				} elseif (isset($changes[$mode . '|' . $public_key])) {
+					$change = $changes[$mode . '|' . $public_key];
+					// A failed check never takes a working account offline.
+					if (!empty($change['only_if_unconfirmed']) && $current === 'active') {
+						$new = $current;
+					} else {
+						$new = $change['status'];
+					}
+					$summary[] = [
+						'title'  => $account['title'] ?? '',
+						'mode'   => $mode,
+						'status' => $new,
+					];
+				} else {
+					continue;
+				}
+
+				if ($new !== $current || ($account[$status_key] ?? null) !== $new) {
+					$account[$status_key] = $new;
+					$updated = true;
+				}
+			}
+		}
+		unset($account);
+
+		if ($updated) {
+			update_option(BANK_TRANSFER_ACCOUNTS_OPTION, $accounts, false);
+		}
+
+		return $summary;
+	}
+
+	/**
+	 * A plain sentence about the last account check, or '' when all is well
+	 * for the mode the shop is using.
+	 *
+	 * @param bool $is_sandbox Whether test mode is on.
+	 * @return string
+	 */
+	public function bank_transfer_last_sync_problem($is_sandbox)
+	{
+		$reason = $this->last_sync['reason'] ?? '';
+		if ($reason === 'unreachable') {
+			return __('Your settings were saved, but we could not reach RT to check your keys. Bank transfer stays hidden at checkout until the keys are checked. Press "Check with RT" to try again in a moment.', 'bank-transfer-payment-gateway');
+		}
+		if ($reason === 'no_keys' || $reason === 'no_accounts') {
+			return '';
+		}
+
+		$wanted = $is_sandbox ? 'sandbox' : 'live';
+		$bad    = [];
+		$seen   = false;
+		foreach ((array) ($this->last_sync['statuses'] ?? []) as $row) {
+			if (($row['mode'] ?? '') !== $wanted) {
+				continue;
+			}
+			$seen = true;
+			if (($row['status'] ?? '') !== 'active') {
+				$bad[] = (string) ($row['title'] ?? '');
+			}
+		}
+
+		if ($reason === 'refused' && !$seen) {
+			return __('We couldn\'t connect to RT with these keys. Check that the publishable and secret keys are from the same RT account and the same mode (Sandbox or Live).', 'bank-transfer-payment-gateway');
+		}
+		if (!empty($bad)) {
+			return sprintf(
+				/* translators: %s: account names */
+				__('We couldn\'t connect to RT with the keys for: %s. Check that the publishable and secret keys are from the same RT account and the same mode (Sandbox or Live). Bank transfer stays hidden at checkout until RT accepts the keys.', 'bank-transfer-payment-gateway'),
+				implode(', ', array_filter($bad))
+			);
+		}
+		if (!$seen) {
+			return $is_sandbox
+				? __('Test mode is on, but no account has sandbox keys. Add sandbox keys to an account, or turn test mode off.', 'bank-transfer-payment-gateway')
+				: __('No account has live keys yet. Add live keys to take real payments, or turn test mode on to try it with sandbox keys.', 'bank-transfer-payment-gateway');
+		}
+		return '';
 	}
 
 
@@ -644,48 +742,64 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 		if (!check_ajax_referer('bank_transfer_sync_nonce', 'nonce', false)) {
 			Bank_Transfer_Payment_Gateway_Logger::error('Security validation failed during manual sync.', $logger_context);
 			wp_send_json_error([
-				'message' => __('Security check failed. Please refresh the page and try again.', 'bank-transfer-payment-gateway')
+				'message' => __('This page was open for too long. Refresh the page and try again.', 'bank-transfer-payment-gateway')
 			], 400);
-			wp_die();
 		}
 
 		// Check user capabilities
 		if (!current_user_can('manage_woocommerce')) {
-		Bank_Transfer_Payment_Gateway_Logger::error('Unauthorized manual sync attempt by user ID: ' . get_current_user_id(), $logger_context);
+			Bank_Transfer_Payment_Gateway_Logger::error('Unauthorized manual sync attempt by user ID: ' . get_current_user_id(), $logger_context);
 			wp_send_json_error([
-				'message' => __('You do not have permission to perform this action.', 'bank-transfer-payment-gateway')
+				'message' => __('You do not have permission to do this. Ask the shop owner or an administrator.', 'bank-transfer-payment-gateway')
 			], 403);
-			wp_die();
 		}
 
 		Bank_Transfer_Payment_Gateway_Logger::info("Payment accounts sync initiated", $logger_context);
 
 		try {
 			ob_start();
-
 			$statusSummary = $this->handle_cron_event();
 			$output = ob_get_clean();
 
 			if (!empty($output)) {
-				Bank_Transfer_Payment_Gateway_Logger::warning('Unexpected output generated during sync: ' . $output, $logger_context);
+				Bank_Transfer_Payment_Gateway_Logger::warning('Unexpected output generated during sync.', $logger_context);
 			}
-
-			Bank_Transfer_Payment_Gateway_Logger::info('Payment accounts sync completed successfully.', $logger_context);
-
-			wp_send_json_success([
-				'message'  => __('Payment accounts synchronized successfully.', 'bank-transfer-payment-gateway'),
-				'timestamp' => current_time('mysql'),
-				'statuses' => $statusSummary
-			]);
-		} catch (Exception $e) {
+		} catch (\Throwable $e) {
+			if (ob_get_level() > 0) {
+				ob_end_clean();
+			}
 			Bank_Transfer_Payment_Gateway_Logger::error('Payment accounts sync failed: ' . $e->getMessage(), $logger_context);
 			wp_send_json_error([
-				'message' => __('Sync failed: ', 'bank-transfer-payment-gateway') . $e->getMessage(),
-				'code'    => $e->getCode()
+				'message' => __('Something went wrong while checking your keys with RT. Try again in a moment. If it keeps happening, contact RT support.', 'bank-transfer-payment-gateway'),
 			], 500);
 		}
 
-		wp_die(); // Always include this
+		$reason = $this->last_sync['reason'] ?? '';
+		if ($reason === 'no_accounts' || $reason === 'no_keys') {
+			wp_send_json_error([
+				'message'  => __('There are no saved keys to check. Add a payment account, paste your keys and press Save changes first.', 'bank-transfer-payment-gateway'),
+				'statuses' => [],
+			], 200);
+		}
+
+		$problem = $this->bank_transfer_last_sync_problem(bank_transfer_is_sandbox());
+		if ($problem !== '') {
+			Bank_Transfer_Payment_Gateway_Logger::warning('Payment accounts sync finished with a problem.', array_merge($logger_context, ['reason' => $reason]));
+			wp_send_json_error([
+				'message'  => ($reason === 'unreachable')
+					? __('We could not reach RT. Check your internet connection and try again in a moment.', 'bank-transfer-payment-gateway')
+					: $problem,
+				'statuses' => $statusSummary,
+			], 200);
+		}
+
+		Bank_Transfer_Payment_Gateway_Logger::info('Payment accounts sync completed successfully.', $logger_context);
+
+		wp_send_json_success([
+			'message'   => __('RT accepted your keys. Shoppers can pay by bank transfer.', 'bank-transfer-payment-gateway'),
+			'timestamp' => current_time('mysql'),
+			'statuses'  => $statusSummary,
+		]);
 	}
 
 	/**
@@ -1324,9 +1438,9 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 		if (!$order->get_meta('_bank_transfer_sync_mismatch_noted')) {
 			$order->add_order_note(
 				'<strong>Bank Transfer Gateway</strong><br><br>' .
-				esc_html__('The payment portal reports this payment as completed, but the details do not match the order:', 'bank-transfer-payment-gateway') .
+				esc_html__('RT reports a completed payment, but its details do not match this order:', 'bank-transfer-payment-gateway') .
 				' ' . esc_html($detail) . '<br>' .
-				esc_html__('The order status was left unchanged. Please verify the payment manually.', 'bank-transfer-payment-gateway')
+				esc_html__('The order was not changed. Check the payment in your RT account before shipping.', 'bank-transfer-payment-gateway')
 			);
 			$order->update_meta_data('_bank_transfer_sync_mismatch_noted', 'yes');
 			$order->save();
@@ -1399,7 +1513,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 			$order = $theorder;
 		}
 		if ($order instanceof WC_Order && bank_transfer_is_gateway_order($order)) {
-			$actions['bank_transfer_check_status'] = __('Check Bank Transfer payment status', 'bank-transfer-payment-gateway');
+			$actions['bank_transfer_check_status'] = __('Check this bank payment with RT', 'bank-transfer-payment-gateway');
 		}
 		return $actions;
 	}
@@ -1419,12 +1533,11 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 		$result = $this->sync_single_order_status($order);
 
 		if ($result === 'success') {
-			$order->add_order_note(__('Manual status check: Payment confirmed successfully.', 'bank-transfer-payment-gateway'));
+			$order->add_order_note(__('Checked with RT: the payment has arrived.', 'bank-transfer-payment-gateway'));
 		} elseif ($result) {
-			/* translators: %s: payment status reported by the payment portal */
-			$order->add_order_note(sprintf(__('Manual status check: Payment portal reports status "%s".', 'bank-transfer-payment-gateway'), $result));
+			$order->add_order_note(bank_transfer_plain_status_sentence($result));
 		} else {
-			$order->add_order_note(__('Manual status check: No status update available from the payment portal.', 'bank-transfer-payment-gateway'));
+			$order->add_order_note(__('Checked with RT: there is no news about this payment yet. Try again later.', 'bank-transfer-payment-gateway'));
 		}
 	}
 
