@@ -2080,7 +2080,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		if (is_checkout()) {
 			$image_url = plugin_dir_url(dirname(__FILE__)) . 'assets/images/loader.gif';
 			wp_enqueue_style('bank-transfer-payment-loader-styles', plugins_url('../assets/css/frontend.css', __FILE__), [], '1.0', 'all');
-			wp_enqueue_script('bank-transfer-js', plugins_url('../assets/js/bank-transfer.js', __FILE__), ['jquery'], '1.0', true);
+			wp_enqueue_script('bank-transfer-js', plugins_url('../assets/js/bank-transfer.js', __FILE__), ['jquery'], filemtime(plugin_dir_path(__FILE__) . '../assets/js/bank-transfer.js'), true);
 			wp_localize_script('bank-transfer-js', 'bank_transfer_params', [
 				'ajax_url'       => admin_url('admin-ajax.php'),
 				'checkout_url'   => wc_get_checkout_url(),

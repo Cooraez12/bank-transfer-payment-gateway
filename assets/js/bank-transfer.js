@@ -441,33 +441,58 @@
 
             const self = this;
 
-            let redirected = false;
+            let finished = false;
             let pollAttempts = 0;
             const maxAttempts = 60; // 3 minutes maximum polling (60 * 3s)
+
+            const NOT_HEARD_BACK =
+                'We have not heard back about your payment yet. Please check your order page in a few minutes before trying again, so you are not charged twice.';
+            const NOT_COMPLETED =
+                'Your payment could not be completed. Please try again.';
+
+            const popupIsOpen = function () {
+                return !!(self.state.popup && !self.state.popup.closed);
+            };
+
+            // Settled or in flight: close the popup and send THIS page to the
+            // order-received page (rows 39 / A60). The popup itself may already
+            // show the shop's thank-you page; the shopper must not be left on
+            // checkout with a "Processing..." button.
+            const goTo = function (url) {
+                finished = true;
+                clearInterval(self.state.popupInterval);
+                self.cleanupPopup();
+                window.location.replace(url);
+            };
+
+            // A closed attempt (failed, cancelled, expired, or the shopper shut
+            // the popup): say why and give Place Order back (row 36 / A57).
+            const stopWithMessage = function (message) {
+                finished = true;
+                clearInterval(self.state.popupInterval);
+                self.cleanupPopup();
+                self.showCheckoutError(message || NOT_COMPLETED);
+                self.reset();
+            };
 
             clearInterval(self.state.popupInterval);
 
             self.state.popupInterval = setInterval(function () {
 
-                // Prevent duplicate execution
-                if (redirected) {
+                if (finished) {
                     clearInterval(self.state.popupInterval);
                     return;
                 }
 
                 pollAttempts++;
                 if (pollAttempts > maxAttempts) {
-                    clearInterval(self.state.popupInterval);
+                    // Never leave the button spinning when polling gives up.
+                    stopWithMessage(NOT_HEARD_BACK);
                     return;
                 }
 
-                const popupExists =
-                    self.state.popup &&
-                    !self.state.popup.closed;
+                const popupExists = popupIsOpen();
 
-                // =========================================
-                // SAFARI + CHROME PAYMENT CHECK
-                // =========================================
                 $.post(
                     bank_transfer_params.ajax_url,
                     {
@@ -478,93 +503,61 @@
                     },
                     function (response) {
 
-                        if (redirected) {
-                            clearInterval(self.state.popupInterval);
+                        if (finished) {
                             return;
                         }
 
-                        // Stop polling if server explicitly indicates stop_polling (e.g. fatal auth / order not found)
-                        if (response?.data?.stop_polling || response?.stop_polling) {
-                            clearInterval(self.state.popupInterval);
-                            const finalState = response?.data?.state || response?.state;
-                            if (!popupExists || finalState === 'failed' || finalState === 'cancelled') {
-                                redirected = true;
-                                self.cleanupPopup();
-                                self.showCheckoutError(
-                                    response?.message ||
-                                    response?.data?.message ||
-                                    'Payment verification failed. Please try again.'
-                                );
-                                self.reset();
-                            }
+                        const data = response?.data || {};
+                        const state = data.state || response?.state || '';
+                        const redirectUrl = data.redirect || response?.redirect || '';
+                        const message = response?.message || data.message || '';
+
+                        // 1. Paid, or the debit is authorised and on its way.
+                        //    Checked BEFORE stop_polling: the server sets
+                        //    stop_polling on success too, and the old order
+                        //    swallowed the redirect (row 39).
+                        if ((response?.success === true || state === 'success' || state === 'processing') && redirectUrl) {
+                            goTo(redirectUrl);
                             return;
                         }
 
-                        const paymentSuccess =
-                            response?.success === true ||
-                            response?.data?.state === 'success';
-
-                        const inFlight =
-                            response?.data?.state === 'processing';
-
-                        const redirectUrl =
-                            response?.data?.redirect ||
-                            response?.redirect;
-
-                        // =========================================
-                        // PAYMENT SETTLED, OR DEBIT AUTHORISED (IN FLIGHT)
-                        // =========================================
-                        if ((paymentSuccess || inFlight) && redirectUrl) {
-
-                            redirected = true;
-
-                            clearInterval(self.state.popupInterval);
-
-                            try {
-
-                                if (
-                                    self.state.popup &&
-                                    !self.state.popup.closed
-                                ) {
-                                    self.state.popup.close();
-                                }
-
-                            } catch (e) {}
-
-                            self.state.popup = null;
-
-                            window.location.replace(redirectUrl);
-
+                        // 2. The attempt is over without payment: tell the
+                        //    shopper even if the popup is still open on the
+                        //    shop's checkout page (row 36).
+                        if (state === 'failed' || state === 'cancelled' || state === 'expired') {
+                            stopWithMessage(message);
                             return;
                         }
 
-                        // =========================================
-                        // USER MANUALLY CLOSED POPUP
-                        // =========================================
+                        // 3. Server says stop (order not found, keys refused).
+                        if (data.stop_polling === true || response?.stop_polling === true) {
+                            stopWithMessage(message || NOT_HEARD_BACK);
+                            return;
+                        }
+
+                        // 4. Still pending and the shopper closed the popup.
                         if (!popupExists) {
-
-                            redirected = true;
-
-                            clearInterval(self.state.popupInterval);
-
-                            const failedMessage =
-                                response?.message ||
-                                response?.data?.message ||
-                                'Your payment could not be completed. Please try again.';
-
-                            self.cleanupPopup();
-
-                            self.showCheckoutError(failedMessage);
-
-                            self.reset();
+                            stopWithMessage(message);
                         }
-
                     },
                     'json'
-                ).fail(function (xhr, status, error) {
-                    // Stop polling if forbidden or bad request
-                    if (xhr.status === 403 || xhr.status === 400 || xhr.status === 401 || xhr.status === 429) {
-                        clearInterval(self.state.popupInterval);
+                ).fail(function (xhr) {
+
+                    if (finished) {
+                        return;
+                    }
+
+                    const message =
+                        xhr?.responseJSON?.data?.message ||
+                        xhr?.responseJSON?.message ||
+                        '';
+
+                    // Refused for good (bad nonce, wrong order, rate limit), or
+                    // the shopper has closed the popup: stop and give the
+                    // button back. A passing network error while the popup is
+                    // still open just waits for the next poll.
+                    if ([400, 401, 403, 429].indexOf(xhr?.status) !== -1 || !popupIsOpen()) {
+                        stopWithMessage(message || NOT_HEARD_BACK);
                     }
                 });
 
