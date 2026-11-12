@@ -84,13 +84,14 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_REST_API
 	 *
 	 * @return true|WP_Error
 	 */
-	private function bank_transfer_verify_webhook(WP_REST_Request $request, $order)
+	private function bank_transfer_verify_webhook(WP_REST_Request $request, $order, $pay_id = '')
 	{
 		if (!$order || !is_a($order, 'WC_Order')) {
 			return new WP_Error('no_order', 'Authentication failed.');
 		}
 
-		$account = bank_transfer_get_order_account($order);
+		// BANK-05: the account that raised the link this webhook is about.
+		$account = bank_transfer_get_webhook_account($order, $pay_id);
 		if ($account === null || empty($account['secret_key'])) {
 			Bank_Transfer_Payment_Gateway_Logger::warning('Webhook rejected: no configured account matches the order public key', ['order_id' => $order->get_id()]);
 			return new WP_Error('no_account', 'Authentication failed.');
@@ -261,7 +262,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_REST_API
 			], 401);
 		}
 
-		$verified = $this->bank_transfer_verify_webhook($request, $order);
+		$verified = $this->bank_transfer_verify_webhook($request, $order, $pay_id);
 		if (is_wp_error($verified)) {
 			if ($verified->get_error_code() === 'replay') {
 				// Already processed once; acknowledge without acting on it.

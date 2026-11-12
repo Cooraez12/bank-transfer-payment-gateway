@@ -192,9 +192,41 @@ function bank_transfer_get_accounts()
 }
 
 /**
- * The account whose public key created an order, as
- * ['public_key' => , 'secret_key' => , 'is_sandbox' => ] for the mode the
- * key belongs to, or null when the order's key matches no configured account.
+ * The configured account a public key belongs to, as
+ * ['public_key' => , 'secret_key' => , 'is_sandbox' => ] for the mode the key
+ * belongs to, or null when no configured account has that key.
+ *
+ * @param string $public_key
+ * @return array|null
+ */
+function bank_transfer_get_account_for_public_key($public_key)
+{
+	$public_key = (string) $public_key;
+	if ($public_key === '') {
+		return null;
+	}
+	foreach (bank_transfer_get_accounts() as $account) {
+		if (!empty($account['sandbox_public_key']) && hash_equals((string) $account['sandbox_public_key'], $public_key)) {
+			return [
+				'public_key' => (string) $account['sandbox_public_key'],
+				'secret_key' => (string) ($account['sandbox_secret_key'] ?? ''),
+				'is_sandbox' => 1,
+			];
+		}
+		if (!empty($account['live_public_key']) && hash_equals((string) $account['live_public_key'], $public_key)) {
+			return [
+				'public_key' => (string) $account['live_public_key'],
+				'secret_key' => (string) ($account['live_secret_key'] ?? ''),
+				'is_sandbox' => 0,
+			];
+		}
+	}
+	return null;
+}
+
+/**
+ * The account whose public key created an order's latest payment link, or
+ * null when the order's key matches no configured account.
  *
  * @param WC_Order $order
  * @return array|null
@@ -204,27 +236,63 @@ function bank_transfer_get_order_account($order)
 	if (!$order instanceof WC_Order) {
 		return null;
 	}
-	$order_public_key = (string) $order->get_meta('_bank_transfer_public_key');
-	if ($order_public_key === '') {
-		return null;
+	return bank_transfer_get_account_for_public_key((string) $order->get_meta('_bank_transfer_public_key'));
+}
+
+/**
+ * The public key a given payment link of this order was raised under, from
+ * the order's link history, or '' when the history does not name it.
+ *
+ * @param WC_Order $order
+ * @param string   $pay_id
+ * @return string
+ */
+function bank_transfer_public_key_for_pay_id($order, $pay_id)
+{
+	$pay_id = trim((string) $pay_id);
+	if (!$order instanceof WC_Order || $pay_id === '') {
+		return '';
 	}
-	foreach (bank_transfer_get_accounts() as $account) {
-		if (!empty($account['sandbox_public_key']) && hash_equals((string) $account['sandbox_public_key'], $order_public_key)) {
-			return [
-				'public_key' => (string) $account['sandbox_public_key'],
-				'secret_key' => (string) ($account['sandbox_secret_key'] ?? ''),
-				'is_sandbox' => 1,
-			];
-		}
-		if (!empty($account['live_public_key']) && hash_equals((string) $account['live_public_key'], $order_public_key)) {
-			return [
-				'public_key' => (string) $account['live_public_key'],
-				'secret_key' => (string) ($account['live_secret_key'] ?? ''),
-				'is_sandbox' => 0,
-			];
+	$history = $order->get_meta('_bank_transfer_pay_id_history');
+	if (!is_array($history)) {
+		return '';
+	}
+	foreach ($history as $entry) {
+		if (
+			is_array($entry) &&
+			isset($entry['pay_id'], $entry['public_key']) &&
+			(string) $entry['pay_id'] !== '' &&
+			hash_equals((string) $entry['pay_id'], $pay_id)
+		) {
+			return (string) $entry['public_key'];
 		}
 	}
-	return null;
+	return '';
+}
+
+/**
+ * The account that must have signed a webhook about $pay_id (BANK-05).
+ *
+ * In a shop with several RT accounts, an order can carry links raised under
+ * different accounts (for example after a daily-limit failover). RT signs a
+ * webhook with the secret of the account that raised THAT link, so the
+ * signature is checked against the account the link history names for the
+ * payment ID. Only when the history does not name it (orders from before the
+ * history existed) is the order's latest account used, as before. The payment
+ * ID only chooses which configured account's secret to check; it grants
+ * nothing until the signature matches.
+ *
+ * @param WC_Order $order
+ * @param string   $pay_id
+ * @return array|null
+ */
+function bank_transfer_get_webhook_account($order, $pay_id)
+{
+	$link_key = bank_transfer_public_key_for_pay_id($order, $pay_id);
+	if ($link_key !== '') {
+		return bank_transfer_get_account_for_public_key($link_key);
+	}
+	return bank_transfer_get_order_account($order);
 }
 
 /**
