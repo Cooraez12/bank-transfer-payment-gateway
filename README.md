@@ -77,6 +77,18 @@ Filters: `rt_bank_transfer_alert_email` (recipient of return / duplicate alerts)
 * ByteNFT / Unified plugin settings and keys are no longer imported. Enter your RT keys in the gateway settings.
 * The RT payment service must accept signed requests (RT deploys this); older service versions require `api_secret` in the body and will refuse this plugin's requests.
 
+
+## Test store against RT's dev service (RT team only)
+
+Real shops need nothing here: sandbox mode with sandbox keys from the RT dashboard talks to `https://app.rt.app/payment-api` and moves no real money. An RT test store that must talk to dev instead adds one must-use plugin, `wp-content/mu-plugins/rt-dev.php`:
+
+```php
+<?php
+add_filter('rt_payment_api_base', fn() => 'https://dev.rt.app/payment-api');
+```
+
+Then paste the dev business test account's sandbox keys and press "Check with RT". The address must be HTTPS on `rt.app` or a `*.rt.app` host; anything else falls back to production. Never point a store at `qa.rt.app` from outside the QA team.
+
 ## Support
 
 https://rt.app/contact-us

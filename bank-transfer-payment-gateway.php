@@ -10,6 +10,7 @@
  * Version: 1.0.3
  * Requires at least: 6.2
  * Requires PHP: 8.0
+ * Requires Plugins: woocommerce
  * WC requires at least: 6.5.4
  * WC tested up to: 11.0
  * License: GPLv3 or later
@@ -28,10 +29,11 @@ define('BANK_TRANSFER_PAYMENT_GATEWAY_MIN_WC_VER', '6.5.4');
 define('BANK_TRANSFER_PAYMENT_GATEWAY_FILE', __FILE__);
 define('BANK_TRANSFER_PAYMENT_GATEWAY_PLUGIN_DIR', plugin_dir_path(__FILE__));
 
-// Declare HPOS Compatibility
+// Declare HPOS and block-checkout compatibility
 add_action('before_woocommerce_init', function () {
 	if (class_exists(\Automattic\WooCommerce\Utilities\FeaturesUtil::class)) {
 		\Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility('custom_order_tables', BANK_TRANSFER_PAYMENT_GATEWAY_FILE, true);
+		\Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility('cart_checkout_blocks', BANK_TRANSFER_PAYMENT_GATEWAY_FILE, true);
 	}
 });
 

@@ -1,0 +1,6 @@
+.git
+.github
+.gitignore
+.distignore
+tests
+RELEASE_CHECKLIST.md
