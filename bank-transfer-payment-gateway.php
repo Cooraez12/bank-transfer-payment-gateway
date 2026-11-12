@@ -6,7 +6,7 @@
  * Author: RT.app
  * Author URI: https://rt.app/
  * Text Domain: bank-transfer-payment-gateway
- * Plugin URI: https://pay.rt.app/
+ * Plugin URI: https://rt.app/
  * Version: 1.0.2
  * Requires at least: 6.2
  * Requires PHP: 8.0
@@ -189,7 +189,7 @@ function bank_transfer_cancel_unpaid_order_action($order_id)
 		if (in_array($state, ['processing', 'success'], true)) {
 			$order->add_order_note(
 				'<strong>Bank Transfer Gateway</strong><br><br>' .
-				esc_html__('The order was cancelled while RT reports the bank payment as in progress. The payment link was NOT cancelled at RT; the order will be updated when the payment settles or fails.', 'bank-transfer-payment-gateway')
+				esc_html__('This order was cancelled while the customer\'s bank transfer was already on its way. The payment could not be stopped. This order will be updated when the money arrives or the payment fails; if it arrives, refund it in your RT account.', 'bank-transfer-payment-gateway')
 			);
 			return;
 		}
@@ -262,10 +262,12 @@ add_action('admin_notices', function () {
 	}
 	$class = bank_transfer_is_production_environment() ? 'notice notice-error' : 'notice notice-warning';
 	echo '<div class="' . esc_attr($class) . '"><p><strong>' .
-		esc_html__('RT Bank Transfer: sandbox mode is enabled.', 'bank-transfer-payment-gateway') . '</strong> ' .
-		esc_html__('Customers can place orders that are "paid" with sandbox test payments; no real funds are received.', 'bank-transfer-payment-gateway');
+		esc_html__('RT Bank Transfer: test mode is on.', 'bank-transfer-payment-gateway') . '</strong> ' .
+		esc_html__('Bank transfer orders are test orders and no real money is received.', 'bank-transfer-payment-gateway');
 	if (bank_transfer_is_production_environment()) {
-		echo ' ' . esc_html__('This site is configured as a production site (WP_ENVIRONMENT_TYPE), so sandbox-paid orders are placed on hold instead of processing. Turn sandbox mode off before taking real orders.', 'bank-transfer-payment-gateway');
+		echo ' ' . esc_html__('Because this is a live shop, test orders are put On hold instead of being marked paid. Turn test mode off in the RT Bank Transfer settings before taking real orders.', 'bank-transfer-payment-gateway');
+	} else {
+		echo ' ' . esc_html__('Turn test mode off in the RT Bank Transfer settings before taking real orders.', 'bank-transfer-payment-gateway');
 	}
 	echo '</p></div>';
 });

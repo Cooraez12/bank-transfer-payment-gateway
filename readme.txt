@@ -14,7 +14,7 @@ Accept ACH bank transfer payments in WooCommerce through RT's hosted payment pag
 
 == Description ==
 
-RT Bank Transfer Payment Gateway adds a "Pay by bank transfer (ACH)" option to your WooCommerce checkout. The customer is taken to RT's secure payment page (pay.rt.app), connects their US bank account and authorises the debit. The order is placed on hold while the transfer is in flight (1 to 5 business days) and marked paid only when RT confirms the funds have settled. If the bank later returns the payment, the order is moved to "Payment returned" and you are notified by e-mail.
+RT Bank Transfer Payment Gateway adds a "Pay by bank transfer (ACH)" option to your WooCommerce checkout. The customer is taken to RT's secure payment page (app.rt.app), connects their US bank account and authorises the debit. The order is placed on hold while the transfer is in flight (1 to 5 business days) and marked paid only when RT confirms the funds have settled. If the bank later returns the payment, the order is moved to "Payment returned" and you are notified by e-mail.
 
 Supports the classic and block checkouts, WooCommerce High-Performance Order Storage, multiple RT merchant accounts with priority routing, and a sandbox mode for testing.
 
@@ -22,23 +22,23 @@ You need an RT merchant account to use this plugin. Get your API keys from your 
 
 == External Services ==
 
-This plugin connects to RT's payment service, operated by RT.app at https://pay.rt.app, to create payment sessions, check payment status and keep your merchant account status in sync. Nothing is sent until you have saved your API keys in the plugin settings.
+This plugin connects to RT's payment service, operated by RT.app at https://app.rt.app, to create payment sessions, check payment status and keep your merchant account status in sync. Nothing is sent until you have saved your API keys in the plugin settings.
 
 What is sent, and when:
 
-* `https://pay.rt.app/payment-api/request-payment` - when a customer places an order with this gateway. Sends the order number, order total and currency, the customer's name, e-mail address, phone number and billing address, the customer's IP address, the WooCommerce customer ID (0 for guests), the return URL of your shop, your account's public API key and the plugin version. The request is signed with your secret API key; the secret itself is not sent.
-* `https://pay.rt.app/payment-api/dailylimit` - when the checkout page is shown and when an order is placed, to check that the order total is within your account's daily limit. Sends the amount and your public API key, signed with the secret key.
-* `https://pay.rt.app/payment-api/payment-requests/public/{payment id}/status` - when the customer returns from the payment page, while the checkout page is waiting for the payment, when you open an order in the admin, and every two hours for orders still awaiting payment. Sends the payment ID and your public API key, signed with the secret key.
-* `https://pay.rt.app/payment-api/cancel-order-link` - when an order with an unstarted payment is cancelled in WooCommerce. Sends the order number and payment ID, signed with the secret key.
-* `https://pay.rt.app/payment-api/sync-account-status` - every two hours and when you press "Sync Accounts" in the settings, to check that your API keys are valid. Sends each account's public key with a signature made with its secret key.
-* `https://pay.rt.app/payment-api/plugin/check/plugin` - when the plugin is activated, deactivated, its settings are saved, and after each account sync. Sends your account titles and public keys, your shop's domain name, and the plugin, WordPress and WooCommerce versions.
+* `https://app.rt.app/payment-api/request-payment` - when a customer places an order with this gateway. Sends the order number, order total and currency, the customer's name, e-mail address, phone number and billing address, the customer's IP address, the WooCommerce customer ID (0 for guests), the return URL of your shop, your account's public API key and the plugin version. The request is signed with your secret API key; the secret itself is not sent.
+* `https://app.rt.app/payment-api/dailylimit` - when the checkout page is shown and when an order is placed, to check that the order total is within your account's daily limit. Sends the amount and your public API key, signed with the secret key.
+* `https://app.rt.app/payment-api/payment-requests/public/{payment id}/status` - when the customer returns from the payment page, while the checkout page is waiting for the payment, when you open an order in the admin, and every two hours for orders still awaiting payment. Sends the payment ID and your public API key, signed with the secret key.
+* `https://app.rt.app/payment-api/cancel-order-link` - when an order with an unstarted payment is cancelled in WooCommerce. Sends the order number and payment ID, signed with the secret key.
+* `https://app.rt.app/payment-api/sync-account-status` - every two hours and when you press "Sync Accounts" in the settings, to check that your API keys are valid. Sends each account's public key with a signature made with its secret key.
+* `https://app.rt.app/payment-api/plugin/check/plugin` - when the plugin is activated, deactivated, its settings are saved, and after each account sync. Sends your account titles and public keys, your shop's domain name, and the plugin, WordPress and WooCommerce versions.
 
 RT sends payment status updates back to your shop at `/wp-json/rt-bank-transfer/v1/data`, signed with your secret API key. Updates without a valid signature are rejected.
 
 Your secret API keys are stored in your WordPress database and are only ever used to sign requests; they are never transmitted to RT or shown in the browser. Customer bank account details are entered on RT's payment page and never pass through your shop.
 
-* Terms of Service: https://pay.rt.app/terms
-* Privacy Policy: https://pay.rt.app/privacy
+* Terms of Service: https://rt.app/terms
+* Privacy Policy: https://rt.app/privacy
 
 == Installation ==
 
@@ -98,4 +98,4 @@ Security release. Requires the RT payment service update that accepts signed req
 
 == Support ==
 
-For support, visit: https://pay.rt.app/contact-us
+For support, visit: https://rt.app/contact-us

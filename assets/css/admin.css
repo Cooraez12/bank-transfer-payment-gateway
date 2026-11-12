@@ -240,17 +240,47 @@
 	color: #fff;
 }
 
-.status-label.active,
+/* Green only when RT has accepted the keys. */
+.status-label,
 .account-status-label {
-	background-color: #28a745;
+	background-color: #646970;
+}
+
+.status-label.active,
+.account-status-label.active {
+	background-color: #1a7f37;
+}
+
+.account-status-label.pending {
+	background-color: #9a6700;
 }
 
 .status-label.inactive,
 .status-label.invalid,
-.account-status-label.inactive,
 .account-status-label.invalid,
-.account-status-label.unknown {
-	background-color: #dc3545;
+.account-status-label.not-connected {
+	background-color: #b32d2e;
+}
+
+.bank-transfer-accounts-container .error-message,
+.bank-transfer-gateway-settings-form .error-message {
+	color: #b32d2e;
+	margin-top: 4px;
+}
+
+@media (max-width: 600px) {
+	.bank-transfer-accounts-container .title-blog,
+	.bank-transfer-accounts-container .action-button {
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+	.bank-transfer-accounts-container .account-input,
+	.bank-transfer-accounts-container .account-input input,
+	.bank-transfer-accounts-container .account-input textarea {
+		width: 100%;
+		max-width: 100%;
+		box-sizing: border-box;
+	}
 }
 
 #bank_transfer-sync-status,
@@ -293,4 +323,7 @@
 	border: 1px solid #dc3545;
 	background-color: #fff0f0;
 	color: #dc3545;
+}
+.bank-transfer-sync-account .error {
+	color: #b32d2e;
 }

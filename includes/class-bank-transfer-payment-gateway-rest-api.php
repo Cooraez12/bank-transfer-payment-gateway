@@ -179,7 +179,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_REST_API
 			}
 
 			// Safari / session tracking
-			if (isset(WC()->session)) {
+			if (function_exists('WC') && WC() && isset(WC()->session) && WC()->session) {
 				WC()->session->set('order_awaiting_payment', $order->get_id());
 			}
 
@@ -193,7 +193,9 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_REST_API
 
 			$wc_status = $order->get_status();
 			if (in_array($wc_status, ['failed', 'cancelled'], true)) {
-				wc_add_notice('Payment was not completed. Please try again.', 'error');
+				if (function_exists('wc_add_notice') && function_exists('WC') && WC()->session) {
+					wc_add_notice(__('Your bank payment was not completed, so you have not been charged. Please try again or choose another payment method.', 'bank-transfer-payment-gateway'), 'error');
+				}
 				wp_safe_redirect(wc_get_checkout_url());
 			} else {
 				wp_safe_redirect($order->get_checkout_order_received_url());

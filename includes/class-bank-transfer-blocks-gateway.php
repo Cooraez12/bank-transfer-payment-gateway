@@ -57,8 +57,8 @@ class BANK_TRANSFER_Blocks_Gateway extends AbstractPaymentMethodType {
 	}
 
 	public function get_payment_method_data() {
-		$title       = $this->settings['title'] ?? __('Bank transfer (ACH)', 'bank-transfer-payment-gateway');
-		$description = $this->settings['description'] ?? '';
+		$title       = $this->settings['title'] ?? __('Pay by bank transfer', 'bank-transfer-payment-gateway');
+		$description = class_exists('BANK_TRANSFER_PAYMENT_GATEWAY') ? BANK_TRANSFER_PAYMENT_GATEWAY::clean_description($this->settings['description'] ?? '') : wp_strip_all_tags((string) ($this->settings['description'] ?? ''));
 
 		if (WC()->cart) {
 			$amount = (float) WC()->cart->get_total('edit');
@@ -88,7 +88,7 @@ class BANK_TRANSFER_Blocks_Gateway extends AbstractPaymentMethodType {
 			'show_consent_checkbox' => ($this->settings['show_consent_checkbox'] ?? 'no') === 'yes',
 			'consent_label'         => __('I consent to the collection of my data to process this payment', 'bank-transfer-payment-gateway'),
 			'consent_nonce'         => wp_create_nonce('bank_transfer_payment'),
-			'redirect_notice'       => __('You will be redirected to RT\'s secure payment page to authorise the bank transfer.', 'bank-transfer-payment-gateway'),
+			'redirect_notice'       => __('After you place the order, you will go to RT\'s secure page to connect your bank and approve the payment.', 'bank-transfer-payment-gateway'),
 		];
 	}
 }

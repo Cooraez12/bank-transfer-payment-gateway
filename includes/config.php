@@ -2,20 +2,79 @@
 if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
 
 // config.php
-if (!defined('BANK_TRANSFER_PROTOCOL')) {
-    define('BANK_TRANSFER_PROTOCOL', 'https://');
+
+/*
+ * Where this plugin talks to RT. ONE setting decides it: BANK_TRANSFER_API_BASE_URL.
+ *
+ * Production (the default, for Live AND Sandbox keys) is
+ * https://app.rt.app/payment-api. Sandbox mode does not use a different
+ * address: the same service answers both, and the keys plus the is_sandbox
+ * flag in each request decide the mode.
+ *
+ * A test shop can point at another RT environment without editing code:
+ *
+ *   add_filter('rt_payment_api_base', function () { return 'https://dev.rt.app/payment-api'; });
+ *
+ * (in a must-use plugin, so it runs before this file), or by defining
+ * BANK_TRANSFER_API_BASE_URL in wp-config.php. The older
+ * bank_transfer_api_host filter (a bare host) is still honoured.
+ * The address is always HTTPS and must be on rt.app, so a shop's keys and its
+ * customers' details can never be sent anywhere else by a filter.
+ */
+if (!defined('BANK_TRANSFER_DEFAULT_API_BASE_URL')) {
+	define('BANK_TRANSFER_DEFAULT_API_BASE_URL', 'https://app.rt.app/payment-api');
 }
 
-if (!defined('BANK_TRANSFER_HOST')) {
-    define('BANK_TRANSFER_HOST', apply_filters('bank_transfer_api_host', 'pay.rt.app'));
-}
-
-if (!defined('BANK_TRANSFER_BASE_URL')) {
-    define('BANK_TRANSFER_BASE_URL', BANK_TRANSFER_PROTOCOL . BANK_TRANSFER_HOST);
+if (!function_exists('bank_transfer_clean_api_base')) {
+	/**
+	 * A safe API base: https, a host on rt.app, no trailing slash. Anything
+	 * else falls back to production.
+	 *
+	 * @param mixed $candidate
+	 * @return string
+	 */
+	function bank_transfer_clean_api_base($candidate)
+	{
+		$candidate = is_string($candidate) ? trim($candidate) : '';
+		if ($candidate === '') {
+			return BANK_TRANSFER_DEFAULT_API_BASE_URL;
+		}
+		if (!preg_match('#^[a-z][a-z0-9+.-]*://#i', $candidate)) {
+			$candidate = 'https://' . $candidate;
+		}
+		$parts = function_exists('wp_parse_url') ? wp_parse_url($candidate) : parse_url($candidate);
+		$host  = is_array($parts) && !empty($parts['host']) ? strtolower((string) $parts['host']) : '';
+		if ($host === '' || !($host === 'rt.app' || substr($host, -7) === '.rt.app')) {
+			return BANK_TRANSFER_DEFAULT_API_BASE_URL;
+		}
+		$path = isset($parts['path']) ? rtrim((string) $parts['path'], '/') : '';
+		if ($path === '') {
+			$path = '/payment-api';
+		}
+		return 'https://' . $host . (!empty($parts['port']) ? ':' . (int) $parts['port'] : '') . $path;
+	}
 }
 
 if (!defined('BANK_TRANSFER_API_BASE_URL')) {
-	define('BANK_TRANSFER_API_BASE_URL', BANK_TRANSFER_BASE_URL . '/payment-api');
+	$bank_transfer_api_base = BANK_TRANSFER_DEFAULT_API_BASE_URL;
+	// Older filter: a bare host name.
+	$bank_transfer_legacy_host = apply_filters('bank_transfer_api_host', '');
+	if (is_string($bank_transfer_legacy_host) && trim($bank_transfer_legacy_host) !== '') {
+		$bank_transfer_api_base = 'https://' . preg_replace('#^[a-z][a-z0-9+.-]*://#i', '', rtrim(trim($bank_transfer_legacy_host), '/')) . '/payment-api';
+	}
+	define('BANK_TRANSFER_API_BASE_URL', bank_transfer_clean_api_base(apply_filters('rt_payment_api_base', $bank_transfer_api_base, 'bank-transfer-payment-gateway')));
+}
+
+/* Derived from the API base; never set separately. Used for links to RT pages
+ * (Developers) and to recognise RT's own origin. */
+if (!defined('BANK_TRANSFER_PROTOCOL')) {
+	define('BANK_TRANSFER_PROTOCOL', 'https://');
+}
+if (!defined('BANK_TRANSFER_HOST')) {
+	define('BANK_TRANSFER_HOST', (string) parse_url(BANK_TRANSFER_API_BASE_URL, PHP_URL_HOST));
+}
+if (!defined('BANK_TRANSFER_BASE_URL')) {
+	define('BANK_TRANSFER_BASE_URL', BANK_TRANSFER_PROTOCOL . BANK_TRANSFER_HOST);
 }
 
 if (!defined('BANK_TRANSFER_PLUGIN_VERSION')) {
