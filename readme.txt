@@ -6,7 +6,7 @@ Tested up to: 7.1
 Requires PHP: 8.0
 WC requires at least: 6.5.4
 WC tested up to: 11.0
-Stable tag: 1.0.2
+Stable tag: 1.0.3
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -14,7 +14,7 @@ Accept ACH bank transfer payments in WooCommerce through RT's hosted payment pag
 
 == Description ==
 
-RT Bank Transfer Payment Gateway adds a "Pay by bank transfer (ACH)" option to your WooCommerce checkout. The customer is taken to RT's secure payment page (rt.app), connects their US bank account and authorises the debit. The order is placed on hold while the transfer is in flight (1 to 5 business days) and marked paid only when RT confirms the funds have settled. If the bank later returns the payment, the order is moved to "Payment returned" and you are notified by e-mail.
+RT Bank Transfer Payment Gateway adds a "Pay by bank transfer (ACH)" option to your WooCommerce checkout. The customer is taken to RT's secure payment page (app.rt.app), connects their US bank account and authorises the debit. The order is placed on hold while the transfer is in flight (1 to 5 business days) and marked paid only when RT confirms the funds have settled. If the bank later returns the payment, the order is moved to "Payment returned" and you are notified by e-mail.
 
 Supports the classic and block checkouts, WooCommerce High-Performance Order Storage, multiple RT merchant accounts with priority routing, and a sandbox mode for testing.
 
@@ -22,16 +22,16 @@ You need an RT merchant account to use this plugin. Get your API keys from your 
 
 == External Services ==
 
-This plugin connects to RT's payment service, operated by RT.app at https://rt.app, to create payment sessions, check payment status and keep your merchant account status in sync. Nothing is sent until you have saved your API keys in the plugin settings.
+This plugin connects to RT's payment service, operated by RT.app at https://app.rt.app, to create payment sessions, check payment status and keep your merchant account status in sync. Nothing is sent until you have saved your API keys in the plugin settings.
 
 What is sent, and when:
 
-* `https://rt.app/payment-api/request-payment` - when a customer places an order with this gateway. Sends the order number, order total and currency, the customer's name, e-mail address, phone number and billing address, the customer's IP address, the WooCommerce customer ID (0 for guests), the return URL of your shop, your account's public API key and the plugin version. The request is signed with your secret API key; the secret itself is not sent.
-* `https://rt.app/payment-api/dailylimit` - when the checkout page is shown and when an order is placed, to check that the order total is within your account's daily limit. Sends the amount and your public API key, signed with the secret key.
-* `https://rt.app/payment-api/payment-requests/public/{payment id}/status` - when the customer returns from the payment page, while the checkout page is waiting for the payment, when you open an order in the admin, and every two hours for orders still awaiting payment. Sends the payment ID and your public API key, signed with the secret key.
-* `https://rt.app/payment-api/cancel-order-link` - when an order with an unstarted payment is cancelled in WooCommerce. Sends the order number and payment ID, signed with the secret key.
-* `https://rt.app/payment-api/sync-account-status` - every two hours and when you press "Sync Accounts" in the settings, to check that your API keys are valid. Sends each account's public key with a signature made with its secret key.
-* `https://rt.app/payment-api/plugin/check/plugin` - when the plugin is activated, deactivated, its settings are saved, and after each account sync. Sends your account titles and public keys, your shop's domain name, and the plugin, WordPress and WooCommerce versions.
+* `https://app.rt.app/payment-api/request-payment` - when a customer places an order with this gateway. Sends the order number, order total and currency, the customer's name, e-mail address, phone number and billing address, the customer's IP address, the WooCommerce customer ID (0 for guests), the return URL of your shop, your account's public API key and the plugin version. The request is signed with your secret API key; the secret itself is not sent.
+* `https://app.rt.app/payment-api/dailylimit` - when the checkout page is shown and when an order is placed, to check that the order total is within your account's daily limit. Sends the amount and your public API key, signed with the secret key.
+* `https://app.rt.app/payment-api/payment-requests/public/{payment id}/status` - when the customer returns from the payment page, while the checkout page is waiting for the payment, when you open an order in the admin, and every two hours for orders still awaiting payment. Sends the payment ID and your public API key, signed with the secret key.
+* `https://app.rt.app/payment-api/cancel-order-link` - when an order with an unstarted payment is cancelled in WooCommerce. Sends the order number and payment ID, signed with the secret key.
+* `https://app.rt.app/payment-api/sync-account-status` - every two hours and when you press "Sync Accounts" in the settings, to check that your API keys are valid. Sends each account's public key with a signature made with its secret key.
+* `https://app.rt.app/payment-api/plugin/check/plugin` - when the plugin is activated, deactivated, its settings are saved, and after each account sync. Sends your account titles and public keys, your shop's domain name, and the plugin, WordPress and WooCommerce versions.
 
 RT sends payment status updates back to your shop at `/wp-json/rt-bank-transfer/v1/data`, signed with your secret API key. Updates without a valid signature are rejected.
 
@@ -68,6 +68,11 @@ Yes. Enable sandbox mode and enter your sandbox keys. On a site whose `WP_ENVIRO
 
 == Changelog ==
 
+= 1.0.3 =
+* The production address is https://app.rt.app/payment-api again (1.0.2's last change pointed it at the website host).
+* Classic checkout: after a successful payment the popup closes and the shopper goes to the order-received page; after a failed, cancelled or expired payment, or a check that cannot complete, a plain message is shown and Place Order works again (it no longer stays on "Processing...").
+* The checkout script is versioned by file date so stores load the new version.
+
 = 1.0.2 =
 * Security: webhooks now require a valid HMAC signature; a raw secret key is no longer accepted as a credential, and replayed deliveries are ignored.
 * Security: the merchant secret key is no longer sent to RT in request bodies; every request is signed instead.
@@ -92,6 +97,9 @@ Yes. Enable sandbox mode and enter your sandbox keys. On a site whose `WP_ENVIRO
 * Initial release.
 
 == Upgrade Notice ==
+
+= 1.0.3 =
+Points the plugin back at https://app.rt.app/payment-api and fixes the classic-checkout popup ending. No settings change.
 
 = 1.0.2 =
 Security release. Requires the RT payment service update that accepts signed requests (deployed by RT). After updating, open the gateway settings once and press "Sync Accounts". Orders placed before the update keep working; new payment links use the `rt-bank-transfer/v1` return route.
