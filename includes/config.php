@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
  *
  * A test shop can point at another RT environment without editing code:
  *
- *   add_filter('rt_payment_api_base', function () { return 'https://dev.rt.app/payment-api'; });
+ *   add_filter('rt_payment_api_base', function () { return 'https://<test-environment>.rt.app/payment-api'; });
  *
  * (in a must-use plugin, so it runs before this file), or by defining
  * BANK_TRANSFER_API_BASE_URL in wp-config.php. The older
