@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
  *
  * A test shop can point at another RT environment without editing code:
  *
- *   add_filter('rt_payment_api_base', function () { return 'https://dev.rt.app/payment-api'; });
+ *   add_filter('rt_payment_api_base', function () { return 'https://<test-environment>.rt.app/payment-api'; });
  *
  * (in a must-use plugin, so it runs before this file), or by defining
  * BANK_TRANSFER_API_BASE_URL in wp-config.php. The older
@@ -42,7 +42,7 @@ if (!function_exists('bank_transfer_clean_api_base')) {
 		if (!preg_match('#^[a-z][a-z0-9+.-]*://#i', $candidate)) {
 			$candidate = 'https://' . $candidate;
 		}
-		$parts = function_exists('wp_parse_url') ? wp_parse_url($candidate) : parse_url($candidate);
+		$parts = wp_parse_url($candidate);
 		$host  = is_array($parts) && !empty($parts['host']) ? strtolower((string) $parts['host']) : '';
 		if ($host === '' || !($host === 'rt.app' || substr($host, -7) === '.rt.app')) {
 			return BANK_TRANSFER_DEFAULT_API_BASE_URL;
@@ -71,14 +71,14 @@ if (!defined('BANK_TRANSFER_PROTOCOL')) {
 	define('BANK_TRANSFER_PROTOCOL', 'https://');
 }
 if (!defined('BANK_TRANSFER_HOST')) {
-	define('BANK_TRANSFER_HOST', (string) parse_url(BANK_TRANSFER_API_BASE_URL, PHP_URL_HOST));
+	define('BANK_TRANSFER_HOST', (string) wp_parse_url(BANK_TRANSFER_API_BASE_URL, PHP_URL_HOST));
 }
 if (!defined('BANK_TRANSFER_BASE_URL')) {
 	define('BANK_TRANSFER_BASE_URL', BANK_TRANSFER_PROTOCOL . BANK_TRANSFER_HOST);
 }
 
 if (!defined('BANK_TRANSFER_PLUGIN_VERSION')) {
-    define('BANK_TRANSFER_PLUGIN_VERSION', '1.0.3');
+    define('BANK_TRANSFER_PLUGIN_VERSION', '1.0.4');
 }
 
 /*

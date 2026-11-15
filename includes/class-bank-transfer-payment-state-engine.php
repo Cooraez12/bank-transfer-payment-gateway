@@ -328,7 +328,7 @@ class BANK_TRANSFER_PAYMENT_ENGINE
                 if ($order->has_status(['pending', 'failed', 'cancelled', 'checkout-draft'])) {
                     $order->update_status(
                         'on-hold',
-                        __('The customer approved the bank transfer. The money is on its way and takes 1 to 5 business days to arrive. The order stays on hold until RT confirms it has arrived. Do not ship yet.', 'bank-transfer-payment-gateway')
+                        __('The customer approved the bank transfer. The money is on its way and takes 1 to 5 business days to arrive. The order stays on hold until RT confirms it has arrived. Do not ship yet.', 'rt-bank-transfer-checkout')
                     );
                 }
             } elseif ($state === 'returned') {
@@ -374,7 +374,7 @@ class BANK_TRANSFER_PAYMENT_ENGINE
         if ($order->get_meta('_is_test_order') && bank_transfer_is_production_environment()) {
             $order->update_status(
                 'on-hold',
-                __('This was a test payment. No real money was received. Because this is a live shop, the order was put on hold instead of being marked paid. Do not ship it.', 'bank-transfer-payment-gateway')
+                __('This was a test payment. No real money was received. Because this is a live shop, the order was put on hold instead of being marked paid. Do not ship it.', 'rt-bank-transfer-checkout')
             );
             $order->update_meta_data('_bank_transfer_sandbox_success_held', 'yes');
             return;
@@ -400,10 +400,10 @@ class BANK_TRANSFER_PAYMENT_ENGINE
         $token       = sanitize_text_field((string) ($payload['payment_token'] ?? ''));
 
         /* translators: %s: bank return code such as R01 */
-        $detail = $return_code !== '' ? sprintf(__(' (bank reference %s)', 'bank-transfer-payment-gateway'), $return_code) : '';
+        $detail = $return_code !== '' ? sprintf(__(' (bank reference %s)', 'rt-bank-transfer-checkout'), $return_code) : '';
         $note   = sprintf(
             /* translators: %1$s: bank reference in parentheses, or empty */
-            __('The bank returned this bank transfer payment%1$s. The money is no longer in your RT account. Do not ship this order until you have checked it.', 'bank-transfer-payment-gateway'),
+            __('The bank returned this bank transfer payment%1$s. The money is no longer in your RT account. Do not ship this order until you have checked it.', 'rt-bank-transfer-checkout'),
             $detail
         );
         if ($reason !== '') {
@@ -418,7 +418,7 @@ class BANK_TRANSFER_PAYMENT_ENGINE
         bank_transfer_notify_admin(
             sprintf(
                 /* translators: %s: order number */
-                __('Bank transfer payment returned for order #%s', 'bank-transfer-payment-gateway'),
+                __('Bank transfer payment returned for order #%s', 'rt-bank-transfer-checkout'),
                 $order->get_order_number()
             ),
             $note,
@@ -456,17 +456,17 @@ class BANK_TRANSFER_PAYMENT_ENGINE
         $was_paid = $order->is_paid() || $order->has_status(['processing', 'completed']);
 
         $note = $was_paid
-            ? __('The bank returned this bank transfer payment. The money is no longer in your RT account. Do not ship this order until you have checked it. To take payment again, ask the customer to pay with a new link or another method.', 'bank-transfer-payment-gateway')
-            : __('The bank returned this bank transfer payment before this shop had marked the order as paid. No money was received for this order. Do not ship it. The customer can pay again from their order page.', 'bank-transfer-payment-gateway');
+            ? __('The bank returned this bank transfer payment. The money is no longer in your RT account. Do not ship this order until you have checked it. To take payment again, ask the customer to pay with a new link or another method.', 'rt-bank-transfer-checkout')
+            : __('The bank returned this bank transfer payment before this shop had marked the order as paid. No money was received for this order. Do not ship it. The customer can pay again from their order page.', 'rt-bank-transfer-checkout');
 
         $details = [];
         if ($reason !== '') {
             /* translators: %s: reason given by the bank */
-            $details[] = sprintf(__('Reason from the bank: %s.', 'bank-transfer-payment-gateway'), rtrim($reason, '.'));
+            $details[] = sprintf(__('Reason from the bank: %s.', 'rt-bank-transfer-checkout'), rtrim($reason, '.'));
         }
         if ($return_code !== '') {
             /* translators: %s: bank return code such as R01 */
-            $details[] = sprintf(__('Bank reference: %s.', 'bank-transfer-payment-gateway'), $return_code);
+            $details[] = sprintf(__('Bank reference: %s.', 'rt-bank-transfer-checkout'), $return_code);
         }
         if (!empty($details)) {
             $note .= ' ' . implode(' ', $details);
@@ -494,7 +494,7 @@ class BANK_TRANSFER_PAYMENT_ENGINE
         bank_transfer_notify_admin(
             sprintf(
                 /* translators: %s: order number */
-                __('Bank transfer payment returned for order #%s', 'bank-transfer-payment-gateway'),
+                __('Bank transfer payment returned for order #%s', 'rt-bank-transfer-checkout'),
                 $order->get_order_number()
             ),
             $note,
@@ -516,7 +516,7 @@ class BANK_TRANSFER_PAYMENT_ENGINE
         $noted[] = $token;
         $order->update_meta_data('_bank_transfer_superseded_links', $noted);
         $order->add_order_note(
-            __('An older payment link for this order has closed. The order was not changed, because the customer has a newer payment link.', 'bank-transfer-payment-gateway')
+            __('An older payment link for this order has closed. The order was not changed, because the customer has a newer payment link.', 'rt-bank-transfer-checkout')
         );
         $order->save();
 
@@ -549,12 +549,12 @@ class BANK_TRANSFER_PAYMENT_ENGINE
         bank_transfer_notify_admin(
             sprintf(
                 /* translators: %s: order number */
-                __('Duplicate bank transfer payment on order #%s', 'bank-transfer-payment-gateway'),
+                __('Duplicate bank transfer payment on order #%s', 'rt-bank-transfer-checkout'),
                 $order->get_order_number()
             ),
             sprintf(
                 /* translators: 1: payment id of the duplicate, 2: payment id the order was paid with */
-                __('The customer has paid for this order twice (RT payment references %1$s and %2$s). The order was not changed. Refund the extra payment in your RT account.', 'bank-transfer-payment-gateway'),
+                __('The customer has paid for this order twice (RT payment references %1$s and %2$s). The order was not changed. Refund the extra payment in your RT account.', 'rt-bank-transfer-checkout'),
                 $token,
                 (string) $order->get_meta('_bank_transfer_pay_id')
             ),
@@ -659,7 +659,7 @@ class BANK_TRANSFER_PAYMENT_ENGINE
                 $order->add_order_note(
                     self::build_order_note(
                         /* translators: %d: attempt number */
-                        sprintf(__('Payment attempt %d did not go through. No money was received.', 'bank-transfer-payment-gateway'), $attempt_number),
+                        sprintf(__('Payment attempt %d did not go through. No money was received.', 'rt-bank-transfer-checkout'), $attempt_number),
                         $event['payment_token'] ?? '',
                         $event['event_type'] ?? ''
                     )
@@ -682,7 +682,7 @@ class BANK_TRANSFER_PAYMENT_ENGINE
 
             $order->add_order_note(
                 self::build_order_note(
-                    __('Payment received. The money has arrived in your RT account.', 'bank-transfer-payment-gateway'),
+                    __('Payment received. The money has arrived in your RT account.', 'rt-bank-transfer-checkout'),
                     $success_event['payment_token'] ?? '',
                     $success_event['event_type'] ?? ''
                 )
@@ -704,7 +704,7 @@ class BANK_TRANSFER_PAYMENT_ENGINE
 
             $order->add_order_note(
                 self::build_order_note(
-                    __('The customer cancelled the payment. No money was received.', 'bank-transfer-payment-gateway'),
+                    __('The customer cancelled the payment. No money was received.', 'rt-bank-transfer-checkout'),
                     $cancel_event['payment_token'] ?? '',
                     $cancel_event['event_type'] ?? ''
                 )

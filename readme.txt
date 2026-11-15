@@ -1,20 +1,20 @@
-=== RT Bank Transfer Payment Gateway ===
+=== RT Bank Transfer Checkout ===
 Contributors: rtapp
-Tags: woocommerce, payment gateway, ach, bank transfer
+Tags: woocommerce, payment gateway, ach, bank transfer, checkout
 Requires at least: 6.2
 Tested up to: 7.1
 Requires PHP: 8.0
 WC requires at least: 6.5.4
-WC tested up to: 11.0
-Stable tag: 1.0.3
-License: GPLv3 or later
-License URI: https://www.gnu.org/licenses/gpl-3.0.html
+WC tested up to: 11.3
+Stable tag: 1.0.4
+License: GPLv2 or later
+License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
 Accept ACH bank transfer payments in WooCommerce through RT's hosted payment page.
 
 == Description ==
 
-RT Bank Transfer Payment Gateway adds a "Pay by bank transfer (ACH)" option to your WooCommerce checkout. The customer is taken to RT's secure payment page (app.rt.app), connects their US bank account and authorises the debit. The order is placed on hold while the transfer is in flight (1 to 5 business days) and marked paid only when RT confirms the funds have settled. If the bank later returns the payment, the order is moved to "Payment returned" and you are notified by e-mail.
+RT Bank Transfer Checkout adds a "Pay by bank transfer (ACH)" option to your WooCommerce checkout. The customer is taken to RT's secure payment page (app.rt.app), connects their US bank account and authorises the debit. The order is placed on hold while the transfer is in flight (1 to 5 business days) and marked paid only when RT confirms the funds have settled. If the bank later returns the payment, the order is moved to "Payment returned" and you are notified by e-mail.
 
 Supports the classic and block checkouts, WooCommerce High-Performance Order Storage, several RT business accounts with priority routing, and a sandbox mode for testing.
 
@@ -31,22 +31,22 @@ What is sent, and when:
 * `https://app.rt.app/payment-api/payment-requests/public/{payment id}/status` - when the customer returns from the payment page, while the checkout page is waiting for the payment, when you open an order in the admin, and every two hours for orders still awaiting payment. Sends the payment ID and your public API key, signed with the secret key.
 * `https://app.rt.app/payment-api/cancel-order-link` - when an order with an unstarted payment is cancelled in WooCommerce. Sends the order number and payment ID, signed with the secret key.
 * `https://app.rt.app/payment-api/sync-account-status` - every two hours and when you press "Check with RT" in the settings, to check that your API keys are valid. Sends each account's public key with a signature made with its secret key.
-* `https://app.rt.app/payment-api/plugin/check/plugin` - when the plugin is activated, deactivated, its settings are saved, and after each account sync. Sends your account titles and public keys, your shop's domain name, and the plugin, WordPress and WooCommerce versions.
+* `https://app.rt.app/payment-api/plugin/check/plugin` - only if you turn on "Share plugin status with RT" in the settings (off by default): when the plugin is activated, deactivated, its settings are saved, and after each account sync. Sends your account titles and public keys, your shop's domain name, and the plugin, WordPress and WooCommerce versions.
 
 RT sends payment status updates back to your shop at `/wp-json/rt-bank-transfer/v1/data`, signed with your secret API key. Updates without a valid signature are rejected.
 
 Your secret API keys are stored in your WordPress database and are only ever used to sign requests; they are never transmitted to RT or shown in the browser. Customer bank account details are entered on RT's payment page and never pass through your shop.
 
-* Terms of Service: https://rt.app/terms
-* Privacy Policy: https://rt.app/privacy
+* Terms of Service: https://rt.app/terms/
+* Privacy Policy: https://rt.app/privacy/
+* All RT legal terms: https://rt.app/legal/
 
 == Installation ==
 
-1. Download the plugin ZIP file.
-2. In WordPress go to Plugins > Add New > Upload Plugin and upload the ZIP, or extract it into `wp-content/plugins`.
-3. Activate the plugin through the 'Plugins' menu in WordPress.
-4. Go to WooCommerce > Settings > Payments > RT Bank Transfer Payment Gateway, turn on the payment method and add an account with your RT keys (sandbox keys are enough to test).
-5. Press "Check with RT" to confirm RT accepts the keys.
+1. In WordPress go to Plugins > Add New, search for "RT Bank Transfer Checkout" and press Install Now. (Or upload the plugin ZIP under Plugins > Add New > Upload Plugin.)
+2. Activate the plugin. WooCommerce must be active.
+3. Go to WooCommerce > Settings > Payments > RT Bank Transfer, turn on the payment method and add an account with your RT keys (sandbox keys are enough to test).
+4. Press "Check with RT" to confirm RT accepts the keys.
 
 == Frequently Asked Questions ==
 
@@ -66,7 +66,20 @@ The customer's bank returned the settled payment (for example, insufficient fund
 
 Yes. Turn on sandbox mode and enter the sandbox keys from your RT dashboard. No real money moves. On a live site (`WP_ENVIRONMENT_TYPE` set to `production`), paid test orders are put on hold with a note instead of being marked paid, so they are never shipped by mistake.
 
+== Screenshots ==
+
+1. The "Pay by bank transfer (ACH)" option at checkout.
+2. The settings screen with a payment account added.
+
 == Changelog ==
+
+= 1.0.4 =
+* New name: RT Bank Transfer Checkout. Prepared for the WordPress.org plugin directory.
+* Plugin status is sent to RT only if you turn on the new "Share plugin status with RT" setting (off by default).
+* Licence is now GPLv2 or later.
+* Help and documentation links point to https://rt.app/help/ and https://rt.app/developers/.
+* Code tidy-ups from the WordPress Plugin Check; no change to how payments work.
+
 
 = 1.0.3 =
 * The production address is https://app.rt.app/payment-api again (1.0.2's last change pointed it at the website host).
@@ -84,7 +97,7 @@ Yes. Turn on sandbox mode and enter the sandbox keys from your RT dashboard. No 
 * A new payment link is refused while a debit is in flight; every payment ID issued for an order is remembered, and a duplicate settled payment is flagged for refund instead of applied.
 * One strict check of payment ID, exact amount, currency and order for every status path (webhook, customer return, status polling, scheduled sync).
 * Block checkout now goes through WooCommerce's Store API, so all WooCommerce validation and extensions run.
-* Removed the import of ByteNFT / Unified plugin credentials and settings.
+* Removed the import of credentials and settings from older plugins.
 * The checkout script no longer rewrites billing names or city for other gateways.
 * The plugin uses its own database table and `rt_`-prefixed gateway, REST and cron identifiers.
 * Admin order screens no longer call RT while rendering; status refreshes are queued in the background.
@@ -100,6 +113,9 @@ Yes. Turn on sandbox mode and enter the sandbox keys from your RT dashboard. No 
 
 == Upgrade Notice ==
 
+= 1.0.4 =
+New name and WordPress.org release. Plugin status is now shared with RT only if you turn it on.
+
 = 1.0.3 =
 Points the plugin back at https://app.rt.app/payment-api and fixes the classic-checkout popup ending. No settings change.
 
@@ -108,4 +124,4 @@ Security release. Requires the RT payment service update that accepts signed req
 
 == Support ==
 
-For support, visit: https://rt.app/contact-us
+For help, visit https://rt.app/help/ or e-mail support@rt.app.

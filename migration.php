@@ -82,7 +82,7 @@ function bank_transfer_migrate_legacy_rows()
 
 /**
  * Normalise this plugin's own settings. BK-09: nothing is imported from the
- * ByteNFT / Unified plugin options any more; a merchant who used that plugin
+ * older plugin options any more; a merchant who used that plugin
  * enters their RT keys here themselves.
  */
 function bank_transfer_migrate_old_settings()

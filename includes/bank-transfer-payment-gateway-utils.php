@@ -13,7 +13,7 @@ function bank_transfer_check_system_requirements()
 	if (version_compare(phpversion(), BANK_TRANSFER_PAYMENT_GATEWAY_MIN_PHP_VER, '<')) {
 		return sprintf(
 			// translators: %1$s is the minimum required PHP version, %2$s is the current PHP version
-			__('RT Bank Transfer needs PHP version %1$s or newer. This site runs %2$s. Ask your web host to update PHP.', 'bank-transfer-payment-gateway'),
+			__('RT Bank Transfer needs PHP version %1$s or newer. This site runs %2$s. Ask your web host to update PHP.', 'rt-bank-transfer-checkout'),
 			BANK_TRANSFER_PAYMENT_GATEWAY_MIN_PHP_VER,
 			phpversion()
 		);
@@ -27,9 +27,9 @@ function bank_transfer_check_system_requirements()
 	if (!$wc_db_version || version_compare($wc_db_version, BANK_TRANSFER_PAYMENT_GATEWAY_MIN_WC_VER, '<')) {
 		return sprintf(
 			// translators: %1$s is the minimum required WooCommerce database version, %2$s is the current WooCommerce database version (or "undefined" if not available)
-			__('RT Bank Transfer needs WooCommerce database version %1$s or newer. This site has %2$s. Update WooCommerce and run its database update.', 'bank-transfer-payment-gateway'),
+			__('RT Bank Transfer needs WooCommerce database version %1$s or newer. This site has %2$s. Update WooCommerce and run its database update.', 'rt-bank-transfer-checkout'),
 			BANK_TRANSFER_PAYMENT_GATEWAY_MIN_WC_VER,
-			$wc_db_version ? $wc_db_version : __('an unknown version', 'bank-transfer-payment-gateway')
+			$wc_db_version ? $wc_db_version : __('an unknown version', 'rt-bank-transfer-checkout')
 		);
 	}
 
@@ -37,9 +37,9 @@ function bank_transfer_check_system_requirements()
 	if (!$wc_plugin_version || version_compare($wc_plugin_version, BANK_TRANSFER_PAYMENT_GATEWAY_MIN_WC_VER, '<')) {
 		return sprintf(
 			// translators: %1$s is the minimum required WooCommerce plugin version, %2$s is the current WooCommerce plugin version (or "undefined" if not available)
-			__('RT Bank Transfer needs WooCommerce version %1$s or newer. This site has %2$s. Update WooCommerce.', 'bank-transfer-payment-gateway'),
+			__('RT Bank Transfer needs WooCommerce version %1$s or newer. This site has %2$s. Update WooCommerce.', 'rt-bank-transfer-checkout'),
 			BANK_TRANSFER_PAYMENT_GATEWAY_MIN_WC_VER,
-			$wc_plugin_version ? $wc_plugin_version : __('an unknown version', 'bank-transfer-payment-gateway')
+			$wc_plugin_version ? $wc_plugin_version : __('an unknown version', 'rt-bank-transfer-checkout')
 		);
 	}
 
@@ -172,7 +172,7 @@ function bank_transfer_is_sandbox()
 
 /**
  * The configured merchant accounts. Only this plugin's own option is read;
- * BK-09 removed every fallback to the ByteNFT / Unified plugin options.
+ * BK-09 removed every fallback to the older plugin options.
  *
  * @return array[] A list of account arrays (never a bare single account).
  */
@@ -296,6 +296,18 @@ function bank_transfer_get_webhook_account($order, $pay_id)
 }
 
 /**
+ * Whether the merchant has turned on "Share plugin status with RT" (off by
+ * default). Plugin status is never sent to RT without this consent.
+ *
+ * @return bool
+ */
+function bank_transfer_telemetry_allowed()
+{
+	$settings = bank_transfer_get_settings();
+	return is_array($settings) && isset($settings['share_plugin_status']) && $settings['share_plugin_status'] === 'yes';
+}
+
+/**
  * Whether the merchant has entered at least one usable key pair. Nothing is
  * sent to RT before this is true (BK-17: no telemetry before setup).
  *
@@ -327,28 +339,28 @@ function bank_transfer_account_status_texts()
 {
 	return [
 		'active'        => [
-			__('Connected', 'bank-transfer-payment-gateway'),
-			__('RT accepted these keys. Shoppers can pay by bank transfer.', 'bank-transfer-payment-gateway'),
+			__('Connected', 'rt-bank-transfer-checkout'),
+			__('RT accepted these keys. Shoppers can pay by bank transfer.', 'rt-bank-transfer-checkout'),
 		],
 		'pending'       => [
-			__('Waiting for RT approval', 'bank-transfer-payment-gateway'),
-			__('RT has your keys but your account is not approved yet. Shoppers cannot pay by bank transfer until it is. Check your RT account for anything left to finish.', 'bank-transfer-payment-gateway'),
+			__('Waiting for RT approval', 'rt-bank-transfer-checkout'),
+			__('RT has your keys but your account is not approved yet. Shoppers cannot pay by bank transfer until it is. Check your RT account for anything left to finish.', 'rt-bank-transfer-checkout'),
 		],
 		'inactive'      => [
-			__('Not active', 'bank-transfer-payment-gateway'),
-			__('This account cannot take payments right now. Check your RT account, or add keys for this mode.', 'bank-transfer-payment-gateway'),
+			__('Not active', 'rt-bank-transfer-checkout'),
+			__('This account cannot take payments right now. Check your RT account, or add keys for this mode.', 'rt-bank-transfer-checkout'),
 		],
 		'invalid'       => [
-			__('Keys not accepted', 'bank-transfer-payment-gateway'),
-			__('RT did not accept these keys. Check that the publishable and secret keys are from the same RT account and the same mode (Sandbox or Live).', 'bank-transfer-payment-gateway'),
+			__('Keys not accepted', 'rt-bank-transfer-checkout'),
+			__('RT did not accept these keys. Check that the publishable and secret keys are from the same RT account and the same mode (Sandbox or Live).', 'rt-bank-transfer-checkout'),
 		],
 		'not_connected' => [
-			__('Could not connect', 'bank-transfer-payment-gateway'),
-			__('We could not reach RT to check these keys. Press "Check with RT" to try again.', 'bank-transfer-payment-gateway'),
+			__('Could not connect', 'rt-bank-transfer-checkout'),
+			__('We could not reach RT to check these keys. Press "Check with RT" to try again.', 'rt-bank-transfer-checkout'),
 		],
 		'unknown'       => [
-			__('Not checked yet', 'bank-transfer-payment-gateway'),
-			__('These keys have not been checked with RT yet. Save your changes, then press "Check with RT".', 'bank-transfer-payment-gateway'),
+			__('Not checked yet', 'rt-bank-transfer-checkout'),
+			__('These keys have not been checked with RT yet. Save your changes, then press "Check with RT".', 'rt-bank-transfer-checkout'),
 		],
 	];
 }
@@ -368,8 +380,8 @@ function bank_transfer_account_status_view($status, $is_sandbox)
 		$status = 'unknown';
 	}
 	$mode = $is_sandbox
-		? __('Sandbox', 'bank-transfer-payment-gateway')
-		: __('Live', 'bank-transfer-payment-gateway');
+		? __('Sandbox', 'rt-bank-transfer-checkout')
+		: __('Live', 'rt-bank-transfer-checkout');
 
 	return [
 		'class' => str_replace('_', '-', $status),
@@ -388,21 +400,21 @@ function bank_transfer_plain_status_sentence($state)
 {
 	switch (strtolower((string) $state)) {
 		case 'success':
-			return __('Checked with RT: the payment has arrived.', 'bank-transfer-payment-gateway');
+			return __('Checked with RT: the payment has arrived.', 'rt-bank-transfer-checkout');
 		case 'processing':
-			return __('Checked with RT: the customer has approved the bank transfer and the money is on its way (1 to 5 business days).', 'bank-transfer-payment-gateway');
+			return __('Checked with RT: the customer has approved the bank transfer and the money is on its way (1 to 5 business days).', 'rt-bank-transfer-checkout');
 		case 'pending':
-			return __('Checked with RT: the customer has not paid yet.', 'bank-transfer-payment-gateway');
+			return __('Checked with RT: the customer has not paid yet.', 'rt-bank-transfer-checkout');
 		case 'failed':
-			return __('Checked with RT: the payment did not go through. No money was received.', 'bank-transfer-payment-gateway');
+			return __('Checked with RT: the payment did not go through. No money was received.', 'rt-bank-transfer-checkout');
 		case 'cancelled':
-			return __('Checked with RT: the customer cancelled the payment. No money was received.', 'bank-transfer-payment-gateway');
+			return __('Checked with RT: the customer cancelled the payment. No money was received.', 'rt-bank-transfer-checkout');
 		case 'expired':
-			return __('Checked with RT: the payment link closed before the customer paid. No money was received.', 'bank-transfer-payment-gateway');
+			return __('Checked with RT: the payment link closed before the customer paid. No money was received.', 'rt-bank-transfer-checkout');
 		case 'returned':
-			return __('Checked with RT: the bank returned this payment. The money is no longer in your RT account.', 'bank-transfer-payment-gateway');
+			return __('Checked with RT: the bank returned this payment. The money is no longer in your RT account.', 'rt-bank-transfer-checkout');
 		default:
-			return __('Checked with RT: there is no news about this payment yet. Try again later.', 'bank-transfer-payment-gateway');
+			return __('Checked with RT: there is no news about this payment yet. Try again later.', 'rt-bank-transfer-checkout');
 	}
 }
 
@@ -619,7 +631,7 @@ function bank_transfer_notify_admin($subject, $message, $order = null)
 	if ($order instanceof WC_Order) {
 		$body .= "\n\n" . sprintf(
 			/* translators: %s: order edit URL */
-			__('Order: %s', 'bank-transfer-payment-gateway'),
+			__('Order: %s', 'rt-bank-transfer-checkout'),
 			$order->get_edit_order_url()
 		);
 	}
