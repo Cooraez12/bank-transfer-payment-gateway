@@ -129,9 +129,9 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 		if (!$error) return;
 
 		$messages = [
-			'failed'    => __('Your bank payment did not go through, so you have not been charged. Please try again or choose another payment method.', 'bank-transfer-payment-gateway'),
-			'cancelled' => __('You cancelled the bank payment, so you have not been charged. You can try again when you are ready.', 'bank-transfer-payment-gateway'),
-			'expired'   => __('The payment page was open for too long and closed, so you have not been charged. Please place the order again.', 'bank-transfer-payment-gateway'),
+			'failed'    => __('Your bank payment did not go through, so you have not been charged. Please try again or choose another payment method.', 'rt-bank-transfer-checkout'),
+			'cancelled' => __('You cancelled the bank payment, so you have not been charged. You can try again when you are ready.', 'rt-bank-transfer-checkout'),
+			'expired'   => __('The payment page was open for too long and closed, so you have not been charged. Please place the order again.', 'rt-bank-transfer-checkout'),
 		];
 
 		// Clear error immediately
@@ -221,7 +221,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 
 		if ($count >= $max_requests) {
 			wp_send_json_error([
-				'message'      => __('Too many tries in a short time. Please wait a minute and try again.', 'bank-transfer-payment-gateway'),
+				'message'      => __('Too many tries in a short time. Please wait a minute and try again.', 'rt-bank-transfer-checkout'),
 				'stop_polling' => true,
 			], 429);
 			wp_die();
@@ -251,7 +251,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 	public function bank_transfer_plugin_action_links($links)
 	{
 		$plugin_links = [
-			'<a href="' . esc_url(admin_url('admin.php?page=wc-settings&tab=checkout&section=' . BANK_TRANSFER_GATEWAY_ID)) . '">' . esc_html__('Settings', 'bank-transfer-payment-gateway') . '</a>',
+			'<a href="' . esc_url(admin_url('admin.php?page=wc-settings&tab=checkout&section=' . BANK_TRANSFER_GATEWAY_ID)) . '">' . esc_html__('Settings', 'rt-bank-transfer-checkout') . '</a>',
 		];
 
 		return array_merge($plugin_links, $links);
@@ -267,8 +267,8 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 	{
 		if (plugin_basename(BANK_TRANSFER_PAYMENT_GATEWAY_FILE) === $file) {
 			$row_meta = [
-				'docs'    => '<a href="' . esc_url(apply_filters('bank_transfer_docs_url', 'https://rt.app/docs/wordpress-plugin')) . '" target="_blank">' . esc_html__('Documentation', 'bank-transfer-payment-gateway') . '</a>',
-				'support' => '<a href="' . esc_url(apply_filters('bank_transfer_support_url', 'https://rt.app/contact-us')) . '" target="_blank">' . esc_html__('Support', 'bank-transfer-payment-gateway') . '</a>',
+				'docs'    => '<a href="' . esc_url(apply_filters('bank_transfer_docs_url', 'https://rt.app/developers/')) . '" target="_blank">' . esc_html__('Documentation', 'rt-bank-transfer-checkout') . '</a>',
+				'support' => '<a href="' . esc_url(apply_filters('bank_transfer_support_url', 'https://rt.app/help/')) . '" target="_blank">' . esc_html__('Support', 'rt-bank-transfer-checkout') . '</a>',
 			];
 
 			$links = array_merge($links, $row_meta);
@@ -318,7 +318,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 
 			wp_send_json_error([
 				'reload'       => false,
-				'message'      => __('We could not confirm this order. Please refresh the page and try again.', 'bank-transfer-payment-gateway'),
+				'message'      => __('We could not confirm this order. Please refresh the page and try again.', 'rt-bank-transfer-checkout'),
 				'stop_polling' => true
 			], 403);
 			wp_die();
@@ -370,7 +370,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 			wp_send_json_error([
 				'reload'       => false,
 				'stop_polling' => $stop,
-				'message'      => __('We could not check your payment just now. Please wait a moment; this page will try again.', 'bank-transfer-payment-gateway'),
+				'message'      => __('We could not check your payment just now. Please wait a moment; this page will try again.', 'rt-bank-transfer-checkout'),
 			], $http >= 400 && $http < 600 ? $http : 500);
 			wp_die();
 		}
@@ -380,7 +380,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 		if (!$payment_status) {
 			wp_send_json([
 				'success' => false,
-				'message' => __('We could not check your payment just now. Please wait a moment; this page will try again.', 'bank-transfer-payment-gateway'),
+				'message' => __('We could not check your payment just now. Please wait a moment; this page will try again.', 'rt-bank-transfer-checkout'),
 				'data' => [
 					'payment_status' => 'pending',
 					'order_status'   => $order->get_status(),
@@ -407,12 +407,12 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 		$is_success = ($state === 'success');
 
 		$message = match ($state) {
-			'success'    => __('Your payment is complete. Thank you.', 'bank-transfer-payment-gateway'),
-			'failed'     => __('Your bank payment did not go through, so you have not been charged. Please try again or choose another payment method.', 'bank-transfer-payment-gateway'),
-			'cancelled'  => __('You cancelled the bank payment, so you have not been charged.', 'bank-transfer-payment-gateway'),
-			'expired'    => __('The payment page was open for too long and closed, so you have not been charged. Please place the order again.', 'bank-transfer-payment-gateway'),
-			'processing' => __('Your bank transfer is on its way. It takes 1 to 5 business days to arrive. We will email you when your order is confirmed.', 'bank-transfer-payment-gateway'),
-			default      => __('We have not heard back about your payment yet. Please check your order page in a few minutes before trying again, so you are not charged twice.', 'bank-transfer-payment-gateway')
+			'success'    => __('Your payment is complete. Thank you.', 'rt-bank-transfer-checkout'),
+			'failed'     => __('Your bank payment did not go through, so you have not been charged. Please try again or choose another payment method.', 'rt-bank-transfer-checkout'),
+			'cancelled'  => __('You cancelled the bank payment, so you have not been charged.', 'rt-bank-transfer-checkout'),
+			'expired'    => __('The payment page was open for too long and closed, so you have not been charged. Please place the order again.', 'rt-bank-transfer-checkout'),
+			'processing' => __('Your bank transfer is on its way. It takes 1 to 5 business days to arrive. We will email you when your order is confirmed.', 'rt-bank-transfer-checkout'),
+			default      => __('We have not heard back about your payment yet. Please check your order page in a few minutes before trying again, so you are not charged twice.', 'rt-bank-transfer-checkout')
 		};
 
 		// A settled payment and an authorised (in-flight) debit both send the
@@ -448,14 +448,14 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 	{
 		$schedules[BANK_TRANSFER_CRON_INTERVAL] = array(
 			'interval' => 2 * 60 * 60, // 2 hours in seconds = 7200
-			'display'  => __('Every Two Hours (RT Bank Transfer)', 'bank-transfer-payment-gateway')
+			'display'  => __('Every Two Hours (RT Bank Transfer)', 'rt-bank-transfer-checkout')
 		);
 		return $schedules;
 	}
 
 	function activate_cron_job()
 	{
-		Bank_Transfer_Payment_Gateway_Logger::info('Automatic payment status checks have been enabled.', ['source' => 'bank-transfer-payment-gateway']);
+		Bank_Transfer_Payment_Gateway_Logger::info('Automatic payment status checks have been enabled.', ['source' => 'rt-bank-transfer-checkout']);
 
 		// Clear existing scheduled event if it exists
 		wp_clear_scheduled_hook(BANK_TRANSFER_CRON_HOOK);
@@ -466,7 +466,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 
 	function deactivate_cron_job()
 	{
-		Bank_Transfer_Payment_Gateway_Logger::info('Automatic payment status checks have been disabled.', ['source' => 'bank-transfer-payment-gateway']);
+		Bank_Transfer_Payment_Gateway_Logger::info('Automatic payment status checks have been disabled.', ['source' => 'rt-bank-transfer-checkout']);
 		wp_clear_scheduled_hook(BANK_TRANSFER_CRON_HOOK);
 		wp_clear_scheduled_hook(BANK_TRANSFER_ASYNC_SYNC_HOOK);
 	}
@@ -481,7 +481,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 	 */
 	public function handle_cron_event()
 	{
-		$logger_context = ['source' => 'bank-transfer-payment-gateway'];
+		$logger_context = ['source' => 'rt-bank-transfer-checkout'];
 
 		$this->last_sync = ['ok' => true, 'reason' => '', 'statuses' => []];
 
@@ -608,7 +608,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 		];
 
 		Bank_Transfer_Payment_Gateway_Logger::info('Payment account statuses checked with RT.', [
-			'source'  => 'bank-transfer-payment-gateway',
+			'source'  => 'rt-bank-transfer-checkout',
 			'context' => ['checked_accounts' => $statusSummary],
 		]);
 
@@ -697,7 +697,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 	{
 		$reason = $this->last_sync['reason'] ?? '';
 		if ($reason === 'unreachable') {
-			return __('Your settings were saved, but we could not reach RT to check your keys. Bank transfer stays hidden at checkout until the keys are checked. Press "Check with RT" to try again in a moment.', 'bank-transfer-payment-gateway');
+			return __('Your settings were saved, but we could not reach RT to check your keys. Bank transfer stays hidden at checkout until the keys are checked. Press "Check with RT" to try again in a moment.', 'rt-bank-transfer-checkout');
 		}
 		if ($reason === 'no_keys' || $reason === 'no_accounts') {
 			return '';
@@ -717,19 +717,19 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 		}
 
 		if ($reason === 'refused' && !$seen) {
-			return __('We couldn\'t connect to RT with these keys. Check that the publishable and secret keys are from the same RT account and the same mode (Sandbox or Live).', 'bank-transfer-payment-gateway');
+			return __('We couldn\'t connect to RT with these keys. Check that the publishable and secret keys are from the same RT account and the same mode (Sandbox or Live).', 'rt-bank-transfer-checkout');
 		}
 		if (!empty($bad)) {
 			return sprintf(
 				/* translators: %s: account names */
-				__('We couldn\'t connect to RT with the keys for: %s. Check that the publishable and secret keys are from the same RT account and the same mode (Sandbox or Live). Bank transfer stays hidden at checkout until RT accepts the keys.', 'bank-transfer-payment-gateway'),
+				__('We couldn\'t connect to RT with the keys for: %s. Check that the publishable and secret keys are from the same RT account and the same mode (Sandbox or Live). Bank transfer stays hidden at checkout until RT accepts the keys.', 'rt-bank-transfer-checkout'),
 				implode(', ', array_filter($bad))
 			);
 		}
 		if (!$seen) {
 			return $is_sandbox
-				? __('Test mode is on, but no account has sandbox keys. Add sandbox keys to an account, or turn test mode off.', 'bank-transfer-payment-gateway')
-				: __('No account has live keys yet. Add live keys to take real payments, or turn test mode on to try it with sandbox keys.', 'bank-transfer-payment-gateway');
+				? __('Test mode is on, but no account has sandbox keys. Add sandbox keys to an account, or turn test mode off.', 'rt-bank-transfer-checkout')
+				: __('No account has live keys yet. Add live keys to take real payments, or turn test mode on to try it with sandbox keys.', 'rt-bank-transfer-checkout');
 		}
 		return '';
 	}
@@ -737,12 +737,12 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 
 	function bank_transfer_manual_sync_callback()
 	{
-		$logger_context = ['source' => 'bank-transfer-payment-gateway'];
+		$logger_context = ['source' => 'rt-bank-transfer-checkout'];
 		// Verify nonce first
 		if (!check_ajax_referer('bank_transfer_sync_nonce', 'nonce', false)) {
 			Bank_Transfer_Payment_Gateway_Logger::error('Security validation failed during manual sync.', $logger_context);
 			wp_send_json_error([
-				'message' => __('This page was open for too long. Refresh the page and try again.', 'bank-transfer-payment-gateway')
+				'message' => __('This page was open for too long. Refresh the page and try again.', 'rt-bank-transfer-checkout')
 			], 400);
 		}
 
@@ -750,7 +750,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 		if (!current_user_can('manage_woocommerce')) {
 			Bank_Transfer_Payment_Gateway_Logger::error('Unauthorized manual sync attempt by user ID: ' . get_current_user_id(), $logger_context);
 			wp_send_json_error([
-				'message' => __('You do not have permission to do this. Ask the shop owner or an administrator.', 'bank-transfer-payment-gateway')
+				'message' => __('You do not have permission to do this. Ask the shop owner or an administrator.', 'rt-bank-transfer-checkout')
 			], 403);
 		}
 
@@ -770,14 +770,14 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 			}
 			Bank_Transfer_Payment_Gateway_Logger::error('Payment accounts sync failed: ' . $e->getMessage(), $logger_context);
 			wp_send_json_error([
-				'message' => __('Something went wrong while checking your keys with RT. Try again in a moment. If it keeps happening, contact RT support.', 'bank-transfer-payment-gateway'),
+				'message' => __('Something went wrong while checking your keys with RT. Try again in a moment. If it keeps happening, contact RT support.', 'rt-bank-transfer-checkout'),
 			], 500);
 		}
 
 		$reason = $this->last_sync['reason'] ?? '';
 		if ($reason === 'no_accounts' || $reason === 'no_keys') {
 			wp_send_json_error([
-				'message'  => __('There are no saved keys to check. Add a payment account, paste your keys and press Save changes first.', 'bank-transfer-payment-gateway'),
+				'message'  => __('There are no saved keys to check. Add a payment account, paste your keys and press Save changes first.', 'rt-bank-transfer-checkout'),
 				'statuses' => [],
 			], 200);
 		}
@@ -787,7 +787,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 			Bank_Transfer_Payment_Gateway_Logger::warning('Payment accounts sync finished with a problem.', array_merge($logger_context, ['reason' => $reason]));
 			wp_send_json_error([
 				'message'  => ($reason === 'unreachable')
-					? __('We could not reach RT. Check your internet connection and try again in a moment.', 'bank-transfer-payment-gateway')
+					? __('We could not reach RT. Check your internet connection and try again in a moment.', 'rt-bank-transfer-checkout')
 					: $problem,
 				'statuses' => $statusSummary,
 			], 200);
@@ -796,7 +796,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 		Bank_Transfer_Payment_Gateway_Logger::info('Payment accounts sync completed successfully.', $logger_context);
 
 		wp_send_json_success([
-			'message'   => __('RT accepted your keys. Shoppers can pay by bank transfer.', 'bank-transfer-payment-gateway'),
+			'message'   => __('RT accepted your keys. Shoppers can pay by bank transfer.', 'rt-bank-transfer-checkout'),
 			'timestamp' => current_time('mysql'),
 			'statuses'  => $statusSummary,
 		]);
@@ -808,7 +808,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 	 */
 	public function bank_transfer_send_plugin_status($plugin_status, $gateway_loaded)
 	{
-		if (!bank_transfer_is_configured()) {
+		if (!bank_transfer_telemetry_allowed() || !bank_transfer_is_configured()) {
 			return;
 		}
 
@@ -837,7 +837,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 			Bank_Transfer_Payment_Gateway_Logger::error(
 				'Unable to send plugin status. No public key found.',
 				[
-					'source' => 'bank-transfer-payment-gateway',
+					'source' => 'rt-bank-transfer-checkout',
 				]
 			);
 			return;
@@ -878,7 +878,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 			Bank_Transfer_Payment_Gateway_Logger::error(
 				'Plugin status API call failed.',
 				[
-					'source'  => 'bank-transfer-payment-gateway',
+					'source'  => 'rt-bank-transfer-checkout',
 					'context' => [
 						'error' => $response->get_error_message(),
 					],
@@ -890,7 +890,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 		Bank_Transfer_Payment_Gateway_Logger::info(
 			'Plugin status updated successfully.',
 			[
-				'source'  => 'bank-transfer-payment-gateway',
+				'source'  => 'rt-bank-transfer-checkout',
 				'context' => [
 					'plugin_status'  => $plugin_status,
 					'gateway_loaded' => $gateway_loaded,
@@ -946,7 +946,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 
 			Bank_Transfer_Payment_Gateway_Logger::info(
 				'[Order #' . $order->get_id() . '] Recovered missing payment id from stored payment link data.',
-				['source' => 'bank-transfer-payment-gateway', 'pay_id' => $pay_id]
+				['source' => 'rt-bank-transfer-checkout', 'pay_id' => $pay_id]
 			);
 		}
 
@@ -1121,7 +1121,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 		Bank_Transfer_Payment_Gateway_Logger::info(
 			"[Order #{$order_id}] Status lookup | payment-requests/status gave no usable status (" .
 			(is_wp_error($response) ? $response->get_error_message() : 'HTTP ' . $result['http_code']) . ')',
-			['source' => 'bank-transfer-payment-gateway']
+			['source' => 'rt-bank-transfer-checkout']
 		);
 
 		return $result;
@@ -1224,7 +1224,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 	{
 		$order_id   = $order->get_id();
 		$log_prefix = "[Order #{$order_id}] Sync |";
-		$ctx        = ['source' => 'bank-transfer-payment-gateway'];
+		$ctx        = ['source' => 'rt-bank-transfer-checkout'];
 		$out        = ['state' => null, 'error' => null, 'http_code' => 0, 'reason' => null];
 
 		$pay_id = $this->bank_transfer_resolve_order_pay_id($order);
@@ -1432,15 +1432,15 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 	{
 		Bank_Transfer_Payment_Gateway_Logger::warning(
 			'[Order #' . $order->get_id() . '] Sync | Backend reports paid but ' . $detail . ' Order left unchanged for manual review.',
-			['source' => 'bank-transfer-payment-gateway']
+			['source' => 'rt-bank-transfer-checkout']
 		);
 
 		if (!$order->get_meta('_bank_transfer_sync_mismatch_noted')) {
 			$order->add_order_note(
 				'<strong>Bank Transfer Gateway</strong><br><br>' .
-				esc_html__('RT reports a completed payment, but its details do not match this order:', 'bank-transfer-payment-gateway') .
+				esc_html__('RT reports a completed payment, but its details do not match this order:', 'rt-bank-transfer-checkout') .
 				' ' . esc_html($detail) . '<br>' .
-				esc_html__('The order was not changed. Check the payment in your RT account before shipping.', 'bank-transfer-payment-gateway')
+				esc_html__('The order was not changed. Check the payment in your RT account before shipping.', 'rt-bank-transfer-checkout')
 			);
 			$order->update_meta_data('_bank_transfer_sync_mismatch_noted', 'yes');
 			$order->save();
@@ -1513,7 +1513,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 			$order = $theorder;
 		}
 		if ($order instanceof WC_Order && bank_transfer_is_gateway_order($order)) {
-			$actions['bank_transfer_check_status'] = __('Check this bank payment with RT', 'bank-transfer-payment-gateway');
+			$actions['bank_transfer_check_status'] = __('Check this bank payment with RT', 'rt-bank-transfer-checkout');
 		}
 		return $actions;
 	}
@@ -1533,11 +1533,11 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Loader
 		$result = $this->sync_single_order_status($order);
 
 		if ($result === 'success') {
-			$order->add_order_note(__('Checked with RT: the payment has arrived.', 'bank-transfer-payment-gateway'));
+			$order->add_order_note(__('Checked with RT: the payment has arrived.', 'rt-bank-transfer-checkout'));
 		} elseif ($result) {
 			$order->add_order_note(bank_transfer_plain_status_sentence($result));
 		} else {
-			$order->add_order_note(__('Checked with RT: there is no news about this payment yet. Try again later.', 'bank-transfer-payment-gateway'));
+			$order->add_order_note(__('Checked with RT: there is no news about this payment yet. Try again later.', 'rt-bank-transfer-checkout'));
 		}
 	}
 

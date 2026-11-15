@@ -149,7 +149,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_REST_API
 	public function bank_transfer_handle_api_request(WP_REST_Request $request)
 	{
 		$method      = strtoupper($request->get_method());
-		$log_context = ['source' => 'bank-transfer-payment-gateway'];
+		$log_context = ['source' => 'rt-bank-transfer-checkout'];
 
 		// -------------------------
 		// 1. GET (RETURN / REDIRECT ONLY) - BT-01 & BT-02
@@ -195,7 +195,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_REST_API
 			$wc_status = $order->get_status();
 			if (in_array($wc_status, ['failed', 'cancelled'], true)) {
 				if (function_exists('wc_add_notice') && function_exists('WC') && WC()->session) {
-					wc_add_notice(__('Your bank payment was not completed, so you have not been charged. Please try again or choose another payment method.', 'bank-transfer-payment-gateway'), 'error');
+					wc_add_notice(__('Your bank payment was not completed, so you have not been charged. Please try again or choose another payment method.', 'rt-bank-transfer-checkout'), 'error');
 				}
 				wp_safe_redirect(wc_get_checkout_url());
 			} else {

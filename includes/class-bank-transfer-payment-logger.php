@@ -165,7 +165,7 @@ class Bank_Transfer_Payment_Gateway_Logger {
 	private static function format_context($context)
 	{
 		$entry = [
-			'source' => 'bank-transfer-payment-gateway'
+			'source' => 'rt-bank-transfer-checkout'
 		];
 
 		if (!is_array($context)) {

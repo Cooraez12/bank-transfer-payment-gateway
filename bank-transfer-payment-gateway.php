@@ -1,20 +1,20 @@
 <?php
 
 /**
- * Plugin Name: RT Bank Transfer Payment Gateway
+ * Plugin Name: RT Bank Transfer Checkout
  * Description: Accept ACH bank transfer payments in WooCommerce through RT's hosted payment page.
  * Author: RT.app
  * Author URI: https://rt.app/
- * Text Domain: bank-transfer-payment-gateway
+ * Text Domain: rt-bank-transfer-checkout
  * Plugin URI: https://rt.app/
- * Version: 1.0.3
+ * Version: 1.0.4
  * Requires at least: 6.2
  * Requires PHP: 8.0
  * Requires Plugins: woocommerce
  * WC requires at least: 6.5.4
- * WC tested up to: 11.0
- * License: GPLv3 or later
- * License URI: https://www.gnu.org/licenses/gpl-3.0.html
+ * WC tested up to: 11.3
+ * License: GPLv2 or later
+ * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  *
  * Copyright (c) 2024 RT
  */
@@ -66,18 +66,18 @@ add_action('init', 'bank_transfer_maybe_upgrade', 20);
 
 add_action('init', function () {
 	register_post_status('wc-' . BANK_TRANSFER_RETURNED_STATUS, [
-		'label'                     => _x('Payment returned', 'Order status', 'bank-transfer-payment-gateway'),
+		'label'                     => _x('Payment returned', 'Order status', 'rt-bank-transfer-checkout'),
 		'public'                    => false,
 		'exclude_from_search'       => false,
 		'show_in_admin_all_list'    => true,
 		'show_in_admin_status_list' => true,
 		/* translators: %s: number of orders */
-		'label_count'               => _n_noop('Payment returned <span class="count">(%s)</span>', 'Payment returned <span class="count">(%s)</span>', 'bank-transfer-payment-gateway'),
+		'label_count'               => _n_noop('Payment returned <span class="count">(%s)</span>', 'Payment returned <span class="count">(%s)</span>', 'rt-bank-transfer-checkout'),
 	]);
 });
 
 add_filter('wc_order_statuses', function ($statuses) {
-	$statuses['wc-' . BANK_TRANSFER_RETURNED_STATUS] = _x('Payment returned', 'Order status', 'bank-transfer-payment-gateway');
+	$statuses['wc-' . BANK_TRANSFER_RETURNED_STATUS] = _x('Payment returned', 'Order status', 'rt-bank-transfer-checkout');
 	return $statuses;
 });
 
@@ -191,7 +191,7 @@ function bank_transfer_cancel_unpaid_order_action($order_id)
 		if (in_array($state, ['processing', 'success'], true)) {
 			$order->add_order_note(
 				'<strong>Bank Transfer Gateway</strong><br><br>' .
-				esc_html__('This order was cancelled while the customer\'s bank transfer was already on its way. The payment could not be stopped. This order will be updated when the money arrives or the payment fails; if it arrives, refund it in your RT account.', 'bank-transfer-payment-gateway')
+				esc_html__('This order was cancelled while the customer\'s bank transfer was already on its way. The payment could not be stopped. This order will be updated when the money arrives or the payment fails; if it arrives, refund it in your RT account.', 'rt-bank-transfer-checkout')
 			);
 			return;
 		}
@@ -201,7 +201,7 @@ function bank_transfer_cancel_unpaid_order_action($order_id)
 
 	if (!is_array($account) || empty($account['secret_key'])) {
 		Bank_Transfer_Payment_Gateway_Logger::warning("Cancel skipped: No matching account found for Order ID: {$order_id}", [
-			'source'   => 'bank-transfer-payment-gateway',
+			'source'   => 'rt-bank-transfer-checkout',
 			'order_id' => $order_id,
 		]);
 		return;
@@ -230,19 +230,19 @@ function bank_transfer_cancel_unpaid_order_action($order_id)
 
 	if (is_wp_error($response)) {
 		Bank_Transfer_Payment_Gateway_Logger::error("Cancel API call failed for Order ID: {$order_id}", [
-			'source'  => 'bank-transfer-payment-gateway',
+			'source'  => 'rt-bank-transfer-checkout',
 			'order_id' => $order_id,
 		]);
 	} else {
 		$response_code = wp_remote_retrieve_response_code($response);
 		if ($response_code >= 200 && $response_code < 300) {
 			Bank_Transfer_Payment_Gateway_Logger::info("Cancel API successful for Order ID: {$order_id}.", [
-				'source'   => 'bank-transfer-payment-gateway',
+				'source'   => 'rt-bank-transfer-checkout',
 				'order_id' => $order_id,
 			]);
 		} else {
 			Bank_Transfer_Payment_Gateway_Logger::warning("Cancel API returned non-200 code for Order ID: {$order_id}.", [
-				'source'        => 'bank-transfer-payment-gateway',
+				'source'        => 'rt-bank-transfer-checkout',
 				'order_id'      => $order_id,
 				'response_code' => $response_code,
 			]);
@@ -264,12 +264,12 @@ add_action('admin_notices', function () {
 	}
 	$class = bank_transfer_is_production_environment() ? 'notice notice-error' : 'notice notice-warning';
 	echo '<div class="' . esc_attr($class) . '"><p><strong>' .
-		esc_html__('RT Bank Transfer: test mode is on.', 'bank-transfer-payment-gateway') . '</strong> ' .
-		esc_html__('Bank transfer orders are test orders and no real money is received.', 'bank-transfer-payment-gateway');
+		esc_html__('RT Bank Transfer: test mode is on.', 'rt-bank-transfer-checkout') . '</strong> ' .
+		esc_html__('Bank transfer orders are test orders and no real money is received.', 'rt-bank-transfer-checkout');
 	if (bank_transfer_is_production_environment()) {
-		echo ' ' . esc_html__('Because this is a live shop, test orders are put On hold instead of being marked paid. Turn test mode off in the RT Bank Transfer settings before taking real orders.', 'bank-transfer-payment-gateway');
+		echo ' ' . esc_html__('Because this is a live shop, test orders are put On hold instead of being marked paid. Turn test mode off in the RT Bank Transfer settings before taking real orders.', 'rt-bank-transfer-checkout');
 	} else {
-		echo ' ' . esc_html__('Turn test mode off in the RT Bank Transfer settings before taking real orders.', 'bank-transfer-payment-gateway');
+		echo ' ' . esc_html__('Turn test mode off in the RT Bank Transfer settings before taking real orders.', 'rt-bank-transfer-checkout');
 	}
 	echo '</p></div>';
 });
@@ -277,7 +277,7 @@ add_action('admin_notices', function () {
 // Test orders are labelled in the orders list so nobody fulfils one by mistake.
 add_filter('woocommerce_admin_order_buyer_name', function ($buyer, $order) {
 	if ($order instanceof WC_Order && bank_transfer_is_gateway_order($order) && $order->get_meta('_is_test_order')) {
-		return $buyer . ' [' . __('TEST', 'bank-transfer-payment-gateway') . ']';
+		return $buyer . ' [' . __('TEST', 'rt-bank-transfer-checkout') . ']';
 	}
 	return $buyer;
 }, 10, 2);
