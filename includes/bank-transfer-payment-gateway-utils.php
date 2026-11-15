@@ -172,7 +172,7 @@ function bank_transfer_is_sandbox()
 
 /**
  * The configured merchant accounts. Only this plugin's own option is read;
- * BK-09 removed every fallback to the ByteNFT / Unified plugin options.
+ * BK-09 removed every fallback to the older plugin options.
  *
  * @return array[] A list of account arrays (never a bare single account).
  */
