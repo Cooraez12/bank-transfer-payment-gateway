@@ -18,4 +18,4 @@ jobs:
       - name: JavaScript syntax
         run: git ls-files -z '*.js' | xargs -0 -n1 node --check
       - name: Existing isolated payment contracts
-        run: php -n tests/test_webhook_account.php
+        run: php -n -d extension=ctype tests/test_webhook_account.php
