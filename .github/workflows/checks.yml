@@ -1,0 +1,21 @@
+name: Plugin checks
+on:
+  pull_request:
+  workflow_dispatch:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: PHP syntax
+        run: git ls-files -z '*.php' | xargs -0 -n1 php -l
+      - name: JavaScript syntax
+        run: git ls-files -z '*.js' | xargs -0 -n1 node --check
+      - name: Existing isolated payment contracts
+        run: php -n tests/test_webhook_account.php
