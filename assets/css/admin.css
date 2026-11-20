@@ -327,3 +327,19 @@
 .bank-transfer-sync-account .error {
 	color: #b32d2e;
 }
+
+
+/* BANK-1020: align saved and newly added account fields at all widths. */
+:is(.bank_transfer-accounts-container, .bank-transfer-accounts-container, .rt_bank_transfer-accounts-container) .add-blog { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin: 12px 0; }
+:is(.bank_transfer-accounts-container, .bank-transfer-accounts-container, .rt_bank_transfer-accounts-container) .add-blog > .account-input { flex: 1 1 220px; min-width: 0; }
+:is(.bank_transfer-accounts-container, .bank-transfer-accounts-container, .rt_bank_transfer-accounts-container) .title-priority .account-name,
+:is(.bank_transfer-accounts-container, .bank-transfer-accounts-container, .rt_bank_transfer-accounts-container) .title-priority .priority-name { width: auto !important; }
+:is(.bank_transfer-accounts-container, .bank-transfer-accounts-container, .rt_bank_transfer-accounts-container) .title-priority .account-name { flex: 2 1 260px; }
+:is(.bank_transfer-accounts-container, .bank-transfer-accounts-container, .rt_bank_transfer-accounts-container) .title-priority .priority-name { flex: 1 1 170px; }
+:is(.bank_transfer-accounts-container, .bank-transfer-accounts-container, .rt_bank_transfer-accounts-container) .account-input label { display: block; margin-bottom: 6px; }
+:is(.bank_transfer-accounts-container, .bank-transfer-accounts-container, .rt_bank_transfer-accounts-container) .account-input input,
+:is(.bank_transfer-accounts-container, .bank-transfer-accounts-container, .rt_bank_transfer-accounts-container) .account-input textarea { box-sizing: border-box; max-width: 100%; margin: 0 !important; }
+:is(.bank_transfer-accounts-container, .bank-transfer-accounts-container, .rt_bank_transfer-accounts-container) .secret-key-wrapper { position: relative; display: flex; align-items: center; width: 100%; }
+:is(.bank_transfer-accounts-container, .bank-transfer-accounts-container, .rt_bank_transfer-accounts-container) .secret-key-wrapper > input { min-width: 0; padding-right: 44px !important; }
+:is(.bank_transfer-accounts-container, .bank-transfer-accounts-container, .rt_bank_transfer-accounts-container) .toggle-secret-visibility { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; border: 0; background: transparent; color: #555; cursor: pointer; }
+:is(.bank_transfer-accounts-container, .bank-transfer-accounts-container, .rt_bank_transfer-accounts-container) .toggle-secret-visibility:focus-visible { outline: 2px solid #2271b1; outline-offset: 2px; }

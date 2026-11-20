@@ -89,9 +89,9 @@ jQuery(document).ready(function ($) {
 
 	function secretBox(cssClass, field) {
 		return '' +
-			'<div class="secret-key-wrapper" style="position: relative; display: flex; align-items: center;">' +
-				'<input type="password" autocomplete="new-password" class="' + cssClass + '" name="accounts[][' + field + ']" placeholder="' + esc(t.secret_key) + '" data-has-existing="0" style="padding-right: 30px;">' +
-				'<button type="button" class="toggle-secret-visibility" style="position: absolute; right: 15px; top: calc(50% - 4px); background: none; border: none; cursor: pointer; color: #555; padding: 0; outline: none;" title="' + esc(t.show_hide) + '" aria-label="' + esc(t.show_hide) + '"><i class="fa fa-eye" aria-hidden="true"></i></button>' +
+			'<div class="secret-key-wrapper">' +
+				'<input type="password" autocomplete="new-password" class="' + cssClass + '" name="accounts[][' + field + ']" placeholder="' + esc(t.secret_key) + '" data-has-existing="0">' +
+				'<button type="button" class="toggle-secret-visibility" title="' + esc(t.show_hide) + '" aria-label="' + esc(t.show_hide) + '"><i class="fa fa-eye" aria-hidden="true"></i></button>' +
 			'</div>';
 	}
 
@@ -121,7 +121,7 @@ jQuery(document).ready(function ($) {
 							'<label>' + esc(t.account_name) + '</label>' +
 							'<input type="text" class="account-title" name="accounts[][title]" placeholder="' + esc(t.account_name_hint) + '">' +
 						'</div>' +
-						'<div><input type="hidden" class="unique-id" name="accounts[][unique_id]" value="' + esc(uniqueId()) + '" readonly></div>' +
+						'<div hidden><input type="hidden" class="unique-id" name="accounts[][unique_id]" value="' + esc(uniqueId()) + '" readonly></div>' +
 						'<div class="account-input priority-name">' +
 							'<label>' + esc(t.order_of_use) + '</label>' +
 							'<input type="number" class="account-priority" name="accounts[][priority]" min="1" value="' + position + '">' +
