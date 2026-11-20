@@ -56,8 +56,8 @@
                         type: emitResponse.responseTypes.SUCCESS,
                         meta: {
                             paymentMethodData: {
-                                bank_transfer_consent: consent ? 'on' : '',
-                                bank_transfer_nonce: settings.consent_nonce || '',
+                                rtbtch_consent: consent ? 'on' : '',
+                                rtbtch_nonce: settings.consent_nonce || '',
                             },
                         },
                     };
@@ -71,13 +71,13 @@
 
         if (description) {
             children.push(
-                createElement(RawHTML, { key: 'description', className: 'bank-transfer-description' }, description)
+                createElement(RawHTML, { key: 'description', className: 'rt-bank-transfer-description' }, description)
             );
         }
 
         if (settings.redirect_notice) {
             children.push(
-                createElement('p', { key: 'notice', className: 'bank-transfer-redirect-notice' }, settings.redirect_notice)
+                createElement('p', { key: 'notice', className: 'rt-bank-transfer-redirect-notice' }, settings.redirect_notice)
             );
         }
 
@@ -85,14 +85,14 @@
             children.push(
                 createElement(
                     'p',
-                    { key: 'consent', className: 'form-row form-row-wide bank-transfer-consent' },
+                    { key: 'consent', className: 'form-row form-row-wide rt-bank-transfer-consent' },
                     createElement(
                         'label',
-                        { htmlFor: 'bank_transfer_consent' },
+                        { htmlFor: 'rtbtch_consent' },
                         createElement('input', {
                             type: 'checkbox',
-                            id: 'bank_transfer_consent',
-                            name: 'bank_transfer_consent',
+                            id: 'rtbtch_consent',
+                            name: 'rtbtch_consent',
                             checked: consent,
                             onChange: function (e) {
                                 setConsent(!!e.target.checked);
@@ -114,7 +114,7 @@
 
         content: createElement(Content, {}),
 
-        edit: createElement('div', { className: 'bank-transfer-edit' }, label),
+        edit: createElement('div', { className: 'rt-bank-transfer-edit' }, label),
 
         canMakePayment: function () {
             return settings.can_pay !== false;

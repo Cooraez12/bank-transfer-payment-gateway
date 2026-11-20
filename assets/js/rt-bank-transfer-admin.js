@@ -1,17 +1,17 @@
 /**
  * RT Bank Transfer: settings screen (payment accounts).
  *
- * Class names used here are fixed ("bank-transfer-...") and match the markup
+ * Class names used here are fixed ("rt-bank-transfer-...") and match the markup
  * printed by generate_accounts_repeater_html(). They do not depend on the
  * gateway id, so renaming the gateway id can never disconnect the buttons.
  */
 jQuery(document).ready(function ($) {
 
-	if (typeof bank_transfer_admin_data === 'undefined' || typeof bank_transfer_admin_data.gateway_id !== 'string') {
+	if (typeof rtbtch_admin_data === 'undefined' || typeof rtbtch_admin_data.gateway_id !== 'string') {
 		return;
 	}
 
-	var data = bank_transfer_admin_data;
+	var data = rtbtch_admin_data;
 	var gatewayId = data.gateway_id;
 	var t = data.i18n || {};
 	var statusTexts = data.statuses || {};
@@ -20,14 +20,14 @@ jQuery(document).ready(function ($) {
 	if (!$form.length || !$form.find('input[name^="woocommerce_' + gatewayId + '_"]').length) {
 		return;
 	}
-	$form.addClass('bank-transfer-gateway-settings-form');
+	$form.addClass('rt-bank-transfer-gateway-settings-form');
 
-	var ACCOUNT = '.bank-transfer-account';
-	var CONTAINER = '.bank-transfer-accounts-container';
-	var INFO = '.bank-transfer-info';
-	var TOGGLE = '.bank-transfer-toggle-btn';
-	var SANDBOX_CHECKBOX = '.bank-transfer-sandbox-checkbox';
-	var SANDBOX_KEYS = '.bank-transfer-sandbox-keys';
+	var ACCOUNT = '.rt-bank-transfer-account';
+	var CONTAINER = '.rt-bank-transfer-accounts-container';
+	var INFO = '.rt-bank-transfer-info';
+	var TOGGLE = '.rt-bank-transfer-toggle-btn';
+	var SANDBOX_CHECKBOX = '.rt-bank-transfer-sandbox-checkbox';
+	var SANDBOX_KEYS = '.rt-bank-transfer-sandbox-keys';
 
 	function esc(text) {
 		return $('<div>').text(text == null ? '' : String(text)).html();
@@ -46,7 +46,7 @@ jQuery(document).ready(function ($) {
 	function clearErrors() {
 		$form.find('.error-message').remove();
 		$form.find('.error').removeClass('error');
-		$('#bank-transfer-global-error').text('');
+		$('#rt-bank-transfer-global-error').text('');
 	}
 
 	/* WooCommerce keeps "Save changes" switched off until something changes.
@@ -97,24 +97,24 @@ jQuery(document).ready(function ($) {
 
 	function newAccountHtml() {
 		var position = $(ACCOUNT).length + 1;
-		var checkboxId = 'bank-transfer-sandbox-checkbox-new-' + Date.now();
+		var checkboxId = 'rt-bank-transfer-sandbox-checkbox-new-' + Date.now();
 		// A shop in test mode most likely wants to paste sandbox keys first.
 		var sandboxFirst = sandboxModeOn();
 
 		return '' +
-			'<div class="bank-transfer-account bank-transfer-account-new">' +
+			'<div class="rt-bank-transfer-account rt-bank-transfer-account-new">' +
 				'<input type="hidden" class="live-status" name="accounts[][live_status]" value="unknown">' +
 				'<input type="hidden" class="sandbox-status" name="accounts[][sandbox_status]" value="unknown">' +
 				'<div class="title-blog">' +
 					'<h4>' +
-						'<span class="account-name-display bank-transfer-name-display">' + esc(t.new_account) + '</span>' +
-						'&nbsp;<i class="fa fa-caret-down bank-transfer-toggle-btn account-toggle-btn rotated" aria-hidden="true"></i>' +
+						'<span class="account-name-display rt-bank-transfer-name-display">' + esc(t.new_account) + '</span>' +
+						'&nbsp;<i class="fa fa-caret-down rt-bank-transfer-toggle-btn account-toggle-btn rotated" aria-hidden="true"></i>' +
 					'</h4>' +
 					'<div class="action-button">' +
 						'<button type="button" class="delete-account-btn" title="' + esc(t.remove) + '" aria-label="' + esc(t.remove) + '"><i class="fa fa-trash" aria-hidden="true"></i></button>' +
 					'</div>' +
 				'</div>' +
-				'<div class="bank-transfer-info account-info" style="display: block;">' +
+				'<div class="rt-bank-transfer-info account-info" style="display: block;">' +
 					'<p class="description">' + esc(t.new_account_hint) + '</p>' +
 					'<div class="add-blog title-priority">' +
 						'<div class="account-input account-name">' +
@@ -135,7 +135,7 @@ jQuery(document).ready(function ($) {
 						'<label>' + esc(t.checkout_note) + '</label>' +
 						'<textarea class="checkout-subtitle" name="accounts[][checkout_subtitle]" placeholder="' + esc(t.checkout_note_hint) + '" rows="2"></textarea>' +
 					'</div></div>' +
-					'<div class="add-blog bank-transfer-production-keys">' +
+					'<div class="add-blog rt-bank-transfer-production-keys">' +
 						'<div class="account-input">' +
 							'<label>' + esc(t.live_keys) + '</label>' +
 							'<input type="text" class="live-public-key" name="accounts[][live_public_key]" placeholder="' + esc(t.publishable_key) + '">' +
@@ -143,10 +143,10 @@ jQuery(document).ready(function ($) {
 						'<div class="account-input">' + secretBox('live-secret-key', 'live_secret_key') + '</div>' +
 					'</div>' +
 					'<div class="account-checkbox">' +
-						'<input type="checkbox" class="bank-transfer-sandbox-checkbox" id="' + checkboxId + '" name="accounts[][has_sandbox]"' + (sandboxFirst ? ' checked' : '') + '>' +
+						'<input type="checkbox" class="rt-bank-transfer-sandbox-checkbox" id="' + checkboxId + '" name="accounts[][has_sandbox]"' + (sandboxFirst ? ' checked' : '') + '>' +
 						' <label for="' + checkboxId + '">' + esc(t.have_sandbox) + '</label>' +
 					'</div>' +
-					'<div class="bank-transfer-sandbox-keys"' + (sandboxFirst ? '' : ' style="display: none;"') + '>' +
+					'<div class="rt-bank-transfer-sandbox-keys"' + (sandboxFirst ? '' : ' style="display: none;"') + '>' +
 						'<div class="add-blog">' +
 							'<div class="account-input">' +
 								'<label>' + esc(t.sandbox_keys) + '</label>' +
@@ -160,10 +160,10 @@ jQuery(document).ready(function ($) {
 	}
 
 	/* Add an account. */
-	$(document).on('click', '.bank-transfer-add-account', function (e) {
+	$(document).on('click', '.rt-bank-transfer-add-account', function (e) {
 		e.preventDefault();
 		$(CONTAINER + ' .empty-account').remove();
-		$('#bank-transfer-global-error').text('');
+		$('#rt-bank-transfer-global-error').text('');
 		var $new = $(newAccountHtml());
 		$(this).closest('.add-account-btn').before($new);
 		updateAccountIndices();
@@ -175,7 +175,7 @@ jQuery(document).ready(function ($) {
 	$(document).on('click', CONTAINER + ' .delete-account-btn', function (e) {
 		e.preventDefault();
 		var $account = $(this).closest(ACCOUNT);
-		var isNew = $account.hasClass('bank-transfer-account-new');
+		var isNew = $account.hasClass('rt-bank-transfer-account-new');
 		if (!isNew && !window.confirm(t.confirm_remove)) {
 			return;
 		}
@@ -183,7 +183,7 @@ jQuery(document).ready(function ($) {
 		updateAccountIndices();
 		markChanged();
 		if (!$(ACCOUNT).length) {
-			$('#bank-transfer-global-error').text(t.removed_last);
+			$('#rt-bank-transfer-global-error').text(t.removed_last);
 		}
 	});
 
@@ -331,7 +331,7 @@ jQuery(document).ready(function ($) {
 		if (hasErrors) {
 			event.preventDefault();
 			event.stopImmediatePropagation();
-			$('#bank-transfer-global-error').text(t.fix_errors);
+			$('#rt-bank-transfer-global-error').text(t.fix_errors);
 			$form.find('[type="submit"]').removeClass('is-busy').prop('disabled', false);
 			var $first = $form.find('.error').first();
 			if ($first.length && $first[0].scrollIntoView) {

@@ -6,7 +6,7 @@
  * the RT payment page in a popup (opened synchronously on the click so
  * browsers allow it) and polls the shop for the payment outcome.
  *
- * The block checkout does not use this file (see bank-transfer-blocks.js).
+ * The block checkout does not use this file (see rt-bank-transfer-blocks.js).
  *
  * BK-11: this script never rewrites billing fields. Validation of names,
  * addresses and postcodes is the server's job.
@@ -22,7 +22,7 @@
 
     const BankTransferCheckout = {
 
-        PAYMENT_METHOD: bank_transfer_params.payment_method,
+        PAYMENT_METHOD: rtbtch_params.payment_method,
 
         state: {
             submitting: false,
@@ -101,8 +101,8 @@
 
                 data: (function() {
                     var formData = $form.serialize();
-                    if (typeof bank_transfer_params !== 'undefined' && bank_transfer_params.plugin_version) {
-                        formData += '&plugin_version=' + encodeURIComponent(bank_transfer_params.plugin_version);
+                    if (typeof rtbtch_params !== 'undefined' && rtbtch_params.plugin_version) {
+                        formData += '&plugin_version=' + encodeURIComponent(rtbtch_params.plugin_version);
                     }
                     return formData;
                 })(),
@@ -175,8 +175,8 @@
                     null;
 
                 const refreshedNonce =
-                    response.bank_transfer_nonce ||
-                    response.data?.bank_transfer_nonce ||
+                    response.rtbtch_nonce ||
+                    response.data?.rtbtch_nonce ||
                     null;
 
                 const errorMessage =
@@ -191,8 +191,8 @@
                 self.state.orderId = orderId;
                 self.state.orderKey = orderKey;
 
-                if (refreshedNonce && typeof bank_transfer_params !== 'undefined') {
-                    bank_transfer_params.bank_transfer_nonce = refreshedNonce;
+                if (refreshedNonce && typeof rtbtch_params !== 'undefined') {
+                    rtbtch_params.rtbtch_nonce = refreshedNonce;
                 }
 
                 // =====================================================
@@ -311,8 +311,8 @@
                 return;
             }
 
-            const logoUrl = bank_transfer_params.bank_transfer_loader
-                ? encodeURI(bank_transfer_params.bank_transfer_loader)
+            const logoUrl = rtbtch_params.rtbtch_loader
+                ? encodeURI(rtbtch_params.rtbtch_loader)
                 : '';
 
             // <meta name="referrer" content="no-referrer"> so that even this
@@ -371,7 +371,7 @@
                 const safeUrl = parsedUrl.href;
                 const escapedUrl = safeUrl.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-                var logoUrl = bank_transfer_params.bank_transfer_loader ? encodeURI(bank_transfer_params.bank_transfer_loader) : '';
+                var logoUrl = rtbtch_params.rtbtch_loader ? encodeURI(rtbtch_params.rtbtch_loader) : '';
                 popup.document.open();
                 popup.document.write(`
                 <!DOCTYPE html>
@@ -494,12 +494,12 @@
                 const popupExists = popupIsOpen();
 
                 $.post(
-                    bank_transfer_params.ajax_url,
+                    rtbtch_params.ajax_url,
                     {
-                        action: 'rt_bank_transfer_popup_closed_event',
+                        action: 'rtbtch_popup_closed_event',
                         order_id: self.state.orderId,
                         order_key: self.state.orderKey,
-                        security: bank_transfer_params.bank_transfer_nonce
+                        security: rtbtch_params.rtbtch_nonce
                     },
                     function (response) {
 
@@ -571,17 +571,17 @@
         showCheckoutError: function (message, fields = []) {
 
             // Clear previous bank transfer notices first
-            $('.woocommerce-notices-wrapper.bank-transfer-error-wrap').remove();
+            $('.woocommerce-notices-wrapper.rt-bank-transfer-error-wrap').remove();
 
-            const $wrapper = $('<div class="woocommerce-notices-wrapper bank-transfer-error-wrap"></div>');
-            const $box = $('<div class="woocommerce-error bank-transfer-error-box" role="alert"></div>');
-            const $header = $('<div class="bank-transfer-error-header"></div>');
+            const $wrapper = $('<div class="woocommerce-notices-wrapper rt-bank-transfer-error-wrap"></div>');
+            const $box = $('<div class="woocommerce-error rt-bank-transfer-error-box" role="alert"></div>');
+            const $header = $('<div class="rt-bank-transfer-error-header"></div>');
             const $strong = $('<strong></strong>').text(message || '');
             $header.append($strong);
             $box.append($header);
 
             if (Array.isArray(fields) && fields.length) {
-                const $ul = $('<ul class="bank-transfer-error-fields"></ul>');
+                const $ul = $('<ul class="rt-bank-transfer-error-fields"></ul>');
                 fields.forEach(function (field) {
                     $ul.append($('<li></li>').text(field));
                 });
@@ -598,7 +598,7 @@
             }
 
             // Scroll to top notice
-            const $notice = $('.woocommerce-notices-wrapper.bank-transfer-error-wrap');
+            const $notice = $('.woocommerce-notices-wrapper.rt-bank-transfer-error-wrap');
 
             if ($notice.length) {
 

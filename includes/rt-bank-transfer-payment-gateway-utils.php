@@ -8,13 +8,13 @@ require_once plugin_dir_path(__FILE__) . 'config.php';
  *
  * @return string|false
  */
-function bank_transfer_check_system_requirements()
+function rtbtch_check_system_requirements()
 {
-	if (version_compare(phpversion(), BANK_TRANSFER_PAYMENT_GATEWAY_MIN_PHP_VER, '<')) {
+	if (version_compare(phpversion(), RTBTCH_GATEWAY_MIN_PHP_VER, '<')) {
 		return sprintf(
 			// translators: %1$s is the minimum required PHP version, %2$s is the current PHP version
 			__('RT Bank Transfer needs PHP version %1$s or newer. This site runs %2$s. Ask your web host to update PHP.', 'rt-bank-transfer-checkout'),
-			BANK_TRANSFER_PAYMENT_GATEWAY_MIN_PHP_VER,
+			RTBTCH_GATEWAY_MIN_PHP_VER,
 			phpversion()
 		);
 	}
@@ -24,21 +24,21 @@ function bank_transfer_check_system_requirements()
 	$wc_plugin_version = defined('WC_VERSION') ? WC_VERSION : null;
 
 	// Check if the WooCommerce database version is outdated
-	if (!$wc_db_version || version_compare($wc_db_version, BANK_TRANSFER_PAYMENT_GATEWAY_MIN_WC_VER, '<')) {
+	if (!$wc_db_version || version_compare($wc_db_version, RTBTCH_GATEWAY_MIN_WC_VER, '<')) {
 		return sprintf(
 			// translators: %1$s is the minimum required WooCommerce database version, %2$s is the current WooCommerce database version (or "undefined" if not available)
 			__('RT Bank Transfer needs WooCommerce database version %1$s or newer. This site has %2$s. Update WooCommerce and run its database update.', 'rt-bank-transfer-checkout'),
-			BANK_TRANSFER_PAYMENT_GATEWAY_MIN_WC_VER,
+			RTBTCH_GATEWAY_MIN_WC_VER,
 			$wc_db_version ? $wc_db_version : __('an unknown version', 'rt-bank-transfer-checkout')
 		);
 	}
 
 	// Check if WooCommerce plugin version is outdated
-	if (!$wc_plugin_version || version_compare($wc_plugin_version, BANK_TRANSFER_PAYMENT_GATEWAY_MIN_WC_VER, '<')) {
+	if (!$wc_plugin_version || version_compare($wc_plugin_version, RTBTCH_GATEWAY_MIN_WC_VER, '<')) {
 		return sprintf(
 			// translators: %1$s is the minimum required WooCommerce plugin version, %2$s is the current WooCommerce plugin version (or "undefined" if not available)
 			__('RT Bank Transfer needs WooCommerce version %1$s or newer. This site has %2$s. Update WooCommerce.', 'rt-bank-transfer-checkout'),
-			BANK_TRANSFER_PAYMENT_GATEWAY_MIN_WC_VER,
+			RTBTCH_GATEWAY_MIN_WC_VER,
 			$wc_plugin_version ? $wc_plugin_version : __('an unknown version', 'rt-bank-transfer-checkout')
 		);
 	}
@@ -46,9 +46,9 @@ function bank_transfer_check_system_requirements()
 	return false;
 }
 
-if (!function_exists('bank_transfer_add_unique_order_note')) {
+if (!function_exists('rtbtch_add_unique_order_note')) {
 
-    function bank_transfer_add_unique_order_note($order, $key, $message)
+    function rtbtch_add_unique_order_note($order, $key, $message)
     {
         if (!$order instanceof WC_Order) {
             return false;
@@ -62,7 +62,7 @@ if (!function_exists('bank_transfer_add_unique_order_note')) {
         $plugin_prefix = '<strong>Bank Transfer Gateway</strong>';
 
         // Unique meta key per note type (scoped to plugin)
-        $meta_key = '_bank_transfer_order_note_' . sanitize_key($key);
+        $meta_key = '_rtbtch_order_note_' . sanitize_key($key);
 
         // Check if already exists
         $existing = $order->get_meta($meta_key, true);
@@ -86,19 +86,19 @@ if (!function_exists('bank_transfer_add_unique_order_note')) {
     }
 }
 
-if (!function_exists('bank_transfer_get_plugin_version')) {
+if (!function_exists('rtbtch_get_plugin_version')) {
     /**
      * Retrieve current plugin version dynamically from constant or plugin header.
      *
      * @return string
      */
-    function bank_transfer_get_plugin_version() {
-        if (defined('BANK_TRANSFER_PLUGIN_VERSION') && !empty(BANK_TRANSFER_PLUGIN_VERSION)) {
-            return BANK_TRANSFER_PLUGIN_VERSION;
+    function rtbtch_get_plugin_version() {
+        if (defined('RTBTCH_PLUGIN_VERSION') && !empty(RTBTCH_PLUGIN_VERSION)) {
+            return RTBTCH_PLUGIN_VERSION;
         }
 
-        if (defined('BANK_TRANSFER_PAYMENT_GATEWAY_FILE') && function_exists('get_file_data')) {
-            $plugin_data = get_file_data(BANK_TRANSFER_PAYMENT_GATEWAY_FILE, ['Version' => 'Version'], 'plugin');
+        if (defined('RTBTCH_GATEWAY_FILE') && function_exists('get_file_data')) {
+            $plugin_data = get_file_data(RTBTCH_GATEWAY_FILE, ['Version' => 'Version'], 'plugin');
             if (!empty($plugin_data['Version'])) {
                 return $plugin_data['Version'];
             }
@@ -118,9 +118,9 @@ if (!function_exists('bank_transfer_get_plugin_version')) {
  *
  * @return string[]
  */
-function bank_transfer_gateway_ids()
+function rtbtch_gateway_ids()
 {
-	return [BANK_TRANSFER_GATEWAY_ID, BANK_TRANSFER_LEGACY_GATEWAY_ID];
+	return [RTBTCH_GATEWAY_ID, RTBTCH_LEGACY_GATEWAY_ID];
 }
 
 /**
@@ -129,12 +129,12 @@ function bank_transfer_gateway_ids()
  * @param WC_Order|mixed $order
  * @return bool
  */
-function bank_transfer_is_gateway_order($order)
+function rtbtch_is_gateway_order($order)
 {
 	if (!$order instanceof WC_Order) {
 		return false;
 	}
-	return in_array((string) $order->get_payment_method(), bank_transfer_gateway_ids(), true);
+	return in_array((string) $order->get_payment_method(), rtbtch_gateway_ids(), true);
 }
 
 /* =========================================================================
@@ -147,11 +147,11 @@ function bank_transfer_is_gateway_order($order)
  *
  * @return array
  */
-function bank_transfer_get_settings()
+function rtbtch_get_settings()
 {
-	$settings = get_option(BANK_TRANSFER_SETTINGS_OPTION, []);
+	$settings = get_option(RTBTCH_SETTINGS_OPTION, []);
 	if (empty($settings)) {
-		$settings = get_option(BANK_TRANSFER_LEGACY_SETTINGS_OPTION, []);
+		$settings = get_option(RTBTCH_LEGACY_SETTINGS_OPTION, []);
 	}
 	if (is_string($settings)) {
 		$settings = maybe_unserialize($settings);
@@ -164,9 +164,9 @@ function bank_transfer_get_settings()
  *
  * @return bool
  */
-function bank_transfer_is_sandbox()
+function rtbtch_is_sandbox()
 {
-	$settings = bank_transfer_get_settings();
+	$settings = rtbtch_get_settings();
 	return isset($settings['sandbox']) && $settings['sandbox'] === 'yes';
 }
 
@@ -176,9 +176,9 @@ function bank_transfer_is_sandbox()
  *
  * @return array[] A list of account arrays (never a bare single account).
  */
-function bank_transfer_get_accounts()
+function rtbtch_get_accounts()
 {
-	$accounts = get_option(BANK_TRANSFER_ACCOUNTS_OPTION, []);
+	$accounts = get_option(RTBTCH_ACCOUNTS_OPTION, []);
 	if (is_string($accounts)) {
 		$accounts = maybe_unserialize($accounts);
 	}
@@ -199,13 +199,13 @@ function bank_transfer_get_accounts()
  * @param string $public_key
  * @return array|null
  */
-function bank_transfer_get_account_for_public_key($public_key)
+function rtbtch_get_account_for_public_key($public_key)
 {
 	$public_key = (string) $public_key;
 	if ($public_key === '') {
 		return null;
 	}
-	foreach (bank_transfer_get_accounts() as $account) {
+	foreach (rtbtch_get_accounts() as $account) {
 		if (!empty($account['sandbox_public_key']) && hash_equals((string) $account['sandbox_public_key'], $public_key)) {
 			return [
 				'public_key' => (string) $account['sandbox_public_key'],
@@ -231,12 +231,12 @@ function bank_transfer_get_account_for_public_key($public_key)
  * @param WC_Order $order
  * @return array|null
  */
-function bank_transfer_get_order_account($order)
+function rtbtch_get_order_account($order)
 {
 	if (!$order instanceof WC_Order) {
 		return null;
 	}
-	return bank_transfer_get_account_for_public_key((string) $order->get_meta('_bank_transfer_public_key'));
+	return rtbtch_get_account_for_public_key((string) $order->get_meta('_rtbtch_public_key'));
 }
 
 /**
@@ -247,13 +247,13 @@ function bank_transfer_get_order_account($order)
  * @param string   $pay_id
  * @return string
  */
-function bank_transfer_public_key_for_pay_id($order, $pay_id)
+function rtbtch_public_key_for_pay_id($order, $pay_id)
 {
 	$pay_id = trim((string) $pay_id);
 	if (!$order instanceof WC_Order || $pay_id === '') {
 		return '';
 	}
-	$history = $order->get_meta('_bank_transfer_pay_id_history');
+	$history = $order->get_meta('_rtbtch_pay_id_history');
 	if (!is_array($history)) {
 		return '';
 	}
@@ -286,13 +286,13 @@ function bank_transfer_public_key_for_pay_id($order, $pay_id)
  * @param string   $pay_id
  * @return array|null
  */
-function bank_transfer_get_webhook_account($order, $pay_id)
+function rtbtch_get_webhook_account($order, $pay_id)
 {
-	$link_key = bank_transfer_public_key_for_pay_id($order, $pay_id);
+	$link_key = rtbtch_public_key_for_pay_id($order, $pay_id);
 	if ($link_key !== '') {
-		return bank_transfer_get_account_for_public_key($link_key);
+		return rtbtch_get_account_for_public_key($link_key);
 	}
-	return bank_transfer_get_order_account($order);
+	return rtbtch_get_order_account($order);
 }
 
 /**
@@ -301,9 +301,9 @@ function bank_transfer_get_webhook_account($order, $pay_id)
  *
  * @return bool
  */
-function bank_transfer_telemetry_allowed()
+function rtbtch_telemetry_allowed()
 {
-	$settings = bank_transfer_get_settings();
+	$settings = rtbtch_get_settings();
 	return is_array($settings) && isset($settings['share_plugin_status']) && $settings['share_plugin_status'] === 'yes';
 }
 
@@ -313,9 +313,9 @@ function bank_transfer_telemetry_allowed()
  *
  * @return bool
  */
-function bank_transfer_is_configured()
+function rtbtch_is_configured()
 {
-	foreach (bank_transfer_get_accounts() as $account) {
+	foreach (rtbtch_get_accounts() as $account) {
 		if (
 			(!empty($account['live_public_key']) && !empty($account['live_secret_key'])) ||
 			(!empty($account['sandbox_public_key']) && !empty($account['sandbox_secret_key']))
@@ -335,7 +335,7 @@ function bank_transfer_is_configured()
  *
  * @return array status => [label, help]
  */
-function bank_transfer_account_status_texts()
+function rtbtch_account_status_texts()
 {
 	return [
 		'active'        => [
@@ -372,9 +372,9 @@ function bank_transfer_account_status_texts()
  * @param bool   $is_sandbox Whether test mode is on.
  * @return array ['class' => string, 'label' => string, 'help' => string]
  */
-function bank_transfer_account_status_view($status, $is_sandbox)
+function rtbtch_account_status_view($status, $is_sandbox)
 {
-	$texts  = bank_transfer_account_status_texts();
+	$texts  = rtbtch_account_status_texts();
 	$status = strtolower(trim((string) $status));
 	if (!isset($texts[$status])) {
 		$status = 'unknown';
@@ -396,7 +396,7 @@ function bank_transfer_account_status_view($status, $is_sandbox)
  * @param string $state Engine state word.
  * @return string
  */
-function bank_transfer_plain_status_sentence($state)
+function rtbtch_plain_status_sentence($state)
 {
 	switch (strtolower((string) $state)) {
 		case 'success':
@@ -427,10 +427,10 @@ function bank_transfer_plain_status_sentence($state)
  *
  * @return string
  */
-function bank_transfer_table_name()
+function rtbtch_table_name()
 {
 	global $wpdb;
-	return $wpdb->prefix . BANK_TRANSFER_TABLE;
+	return $wpdb->prefix . RTBTCH_TABLE;
 }
 
 /* =========================================================================
@@ -448,7 +448,7 @@ function bank_transfer_table_name()
  * @param string $content_type
  * @return array
  */
-function bank_transfer_signed_headers($public_key, $secret_key, $raw_body, $content_type = 'application/json')
+function rtbtch_signed_headers($public_key, $secret_key, $raw_body, $content_type = 'application/json')
 {
 	$timestamp = (string) time();
 	return [
@@ -468,7 +468,7 @@ function bank_transfer_signed_headers($public_key, $secret_key, $raw_body, $cont
  * @param string $secret_key
  * @return array ['timestamp' => string, 'signature' => string]
  */
-function bank_transfer_account_signature($public_key, $secret_key)
+function rtbtch_account_signature($public_key, $secret_key)
 {
 	$timestamp = (string) time();
 	return [
@@ -488,7 +488,7 @@ function bank_transfer_account_signature($public_key, $secret_key)
  * @param mixed $amount
  * @return string
  */
-function bank_transfer_format_amount($amount)
+function rtbtch_format_amount($amount)
 {
 	return number_format((float) $amount, 2, '.', '');
 }
@@ -505,15 +505,15 @@ function bank_transfer_format_amount($amount)
  * @param string[] $known_ids Every payment id the order was issued.
  * @return true|WP_Error
  */
-function bank_transfer_verify_payment_claim($order, array $data, $pay_id, array $known_ids)
+function rtbtch_verify_payment_claim($order, array $data, $pay_id, array $known_ids)
 {
 	if (!$order instanceof WC_Order) {
-		return new WP_Error('bank_transfer_no_order', 'Order not found.');
+		return new WP_Error('rtbtch_no_order', 'Order not found.');
 	}
 
 	$pay_id = trim((string) $pay_id);
 	if ($pay_id === '') {
-		return new WP_Error('bank_transfer_pay_id_required', 'Payment ID required.');
+		return new WP_Error('rtbtch_pay_id_required', 'Payment ID required.');
 	}
 	$id_matches = false;
 	foreach ($known_ids as $known_id) {
@@ -523,29 +523,29 @@ function bank_transfer_verify_payment_claim($order, array $data, $pay_id, array 
 		}
 	}
 	if (!$id_matches) {
-		return new WP_Error('bank_transfer_pay_id_mismatch', 'Payment ID mismatch.');
+		return new WP_Error('rtbtch_pay_id_mismatch', 'Payment ID mismatch.');
 	}
 
 	$raw_amount = $data['amount'] ?? ($data['total_amount'] ?? null);
 	if ($raw_amount === null || $raw_amount === '' || !is_numeric($raw_amount)) {
-		return new WP_Error('bank_transfer_amount_required', 'Amount required.');
+		return new WP_Error('rtbtch_amount_required', 'Amount required.');
 	}
-	if (bank_transfer_format_amount($raw_amount) !== bank_transfer_format_amount($order->get_total())) {
-		return new WP_Error('bank_transfer_amount_mismatch', 'Amount mismatch.');
+	if (rtbtch_format_amount($raw_amount) !== rtbtch_format_amount($order->get_total())) {
+		return new WP_Error('rtbtch_amount_mismatch', 'Amount mismatch.');
 	}
 
 	$raw_currency = $data['curr_code'] ?? ($data['currency'] ?? '');
 	if (!is_string($raw_currency) || trim($raw_currency) === '') {
-		return new WP_Error('bank_transfer_currency_required', 'Currency required.');
+		return new WP_Error('rtbtch_currency_required', 'Currency required.');
 	}
 	if (strtoupper(trim(sanitize_text_field($raw_currency))) !== strtoupper(trim((string) $order->get_currency()))) {
-		return new WP_Error('bank_transfer_currency_mismatch', 'Currency mismatch.');
+		return new WP_Error('rtbtch_currency_mismatch', 'Currency mismatch.');
 	}
 
 	$raw_order_id = $data['order_id'] ?? ($data['order_reference'] ?? ($data['meta_data']['order_id'] ?? null));
 	if ($raw_order_id !== null && $raw_order_id !== '' && !is_array($raw_order_id)) {
 		if ((string) absint($raw_order_id) !== (string) $order->get_id()) {
-			return new WP_Error('bank_transfer_order_mismatch', 'Order mismatch.');
+			return new WP_Error('rtbtch_order_mismatch', 'Order mismatch.');
 		}
 	}
 
@@ -563,7 +563,7 @@ function bank_transfer_verify_payment_claim($order, array $data, $pay_id, array 
  *
  * @return string
  */
-function bank_transfer_rate_limit_subject()
+function rtbtch_rate_limit_subject()
 {
 	if (function_exists('WC') && WC() && WC()->session && method_exists(WC()->session, 'get_customer_id')) {
 		$customer_id = (string) WC()->session->get_customer_id();
@@ -581,7 +581,7 @@ function bank_transfer_rate_limit_subject()
  * @param string $ip
  * @return string
  */
-function bank_transfer_anonymize_ip($ip)
+function rtbtch_anonymize_ip($ip)
 {
 	if (function_exists('wp_privacy_anonymize_ip')) {
 		return wp_privacy_anonymize_ip((string) $ip);
@@ -600,10 +600,10 @@ function bank_transfer_anonymize_ip($ip)
  *
  * @return bool
  */
-function bank_transfer_is_production_environment()
+function rtbtch_is_production_environment()
 {
 	$type = function_exists('wp_get_environment_type') ? wp_get_environment_type() : 'production';
-	return apply_filters('rt_bank_transfer_is_production_environment', $type === 'production', $type);
+	return apply_filters('rtbtch_is_production_environment', $type === 'production', $type);
 }
 
 /**
@@ -615,13 +615,13 @@ function bank_transfer_is_production_environment()
  * @param string        $message Plain text.
  * @param WC_Order|null $order
  */
-function bank_transfer_notify_admin($subject, $message, $order = null)
+function rtbtch_notify_admin($subject, $message, $order = null)
 {
 	if ($order instanceof WC_Order) {
 		$order->add_order_note('<strong>Bank Transfer Gateway</strong><br><br>' . esc_html($message));
 	}
 
-	$to = apply_filters('rt_bank_transfer_alert_email', get_option('admin_email'), $order);
+	$to = apply_filters('rtbtch_alert_email', get_option('admin_email'), $order);
 	if (empty($to) || !is_email($to)) {
 		return;
 	}
@@ -642,3 +642,32 @@ function bank_transfer_notify_admin($subject, $message, $order = null)
 		$body
 	);
 }
+
+/**
+ * Whether the current admin screen is one where this plugin may show a notice:
+ * its own settings section, WooCommerce order screens and, optionally, the
+ * Plugins screen.
+ *
+ * @param bool $include_plugins_screen Also allow the Plugins screen.
+ * @return bool
+ */
+function rtbtch_is_own_admin_screen($include_plugins_screen = true)
+{
+	if (!function_exists('get_current_screen')) {
+		return false;
+	}
+	$screen = get_current_screen();
+	if (!$screen) {
+		return false;
+	}
+	if ($include_plugins_screen && $screen->id === 'plugins') {
+		return true;
+	}
+	if (in_array($screen->id, ['woocommerce_page_wc-orders', 'edit-shop_order', 'shop_order'], true)) {
+		return true;
+	}
+	// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only screen check.
+	$section = isset($_GET['section']) ? sanitize_key(wp_unslash($_GET['section'])) : '';
+	return $screen->id === 'woocommerce_page_wc-settings' && $section === RTBTCH_GATEWAY_ID;
+}
+

@@ -2,7 +2,7 @@
 if (!defined('ABSPATH')) exit;
 
 require_once plugin_dir_path(__FILE__) . 'config.php';
-require_once plugin_dir_path(__FILE__) . 'bank-transfer-payment-gateway-utils.php';
+require_once plugin_dir_path(__FILE__) . 'rt-bank-transfer-payment-gateway-utils.php';
 
 /**
  * The order's payment state machine.
@@ -17,7 +17,7 @@ require_once plugin_dir_path(__FILE__) . 'bank-transfer-payment-gateway-utils.ph
  * may move a paid order to returned (BK-01). A second settled payment on a
  * paid order is never applied; it is flagged for a refund (BK-04).
  */
-class BANK_TRANSFER_PAYMENT_ENGINE
+class RTBTCH_State_Engine
 {
     const LOCK_TTL  = 12;
     const EVENT_TTL = 86400;
@@ -33,8 +33,8 @@ class BANK_TRANSFER_PAYMENT_ENGINE
         $order = wc_get_order($order_id);
         if (!$order || !is_a($order, 'WC_Order')) return false;
 
-        if (!bank_transfer_is_gateway_order($order)) {
-            Bank_Transfer_Payment_Gateway_Logger::warning('Rejected event: order payment method is not this gateway.', [
+        if (!rtbtch_is_gateway_order($order)) {
+            RTBTCH_Logger::warning('Rejected event: order payment method is not this gateway.', [
                 'order_id' => $order_id,
             ]);
             return false;
@@ -47,7 +47,7 @@ class BANK_TRANSFER_PAYMENT_ENGINE
         }
 
         global $wpdb;
-        $lock_name = "bank_transfer_lock_{$order_id}";
+        $lock_name = "rtbtch_lock_{$order_id}";
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
         $lock_acquired = (int) $wpdb->get_var($wpdb->prepare("SELECT GET_LOCK(%s, 5)", $lock_name));
         if ($lock_acquired !== 1) {
@@ -89,7 +89,7 @@ class BANK_TRANSFER_PAYMENT_ENGINE
                     // order. A late "failed" or "returned" for an earlier
                     // link must not take a paid order out of fulfilment.
                     $event_token = (string) ($payload['payment_token'] ?? '');
-                    $paid_token  = (string) $order->get_meta('_bank_transfer_pay_id');
+                    $paid_token  = (string) $order->get_meta('_rtbtch_pay_id');
                     if ($event_token !== '' && $paid_token !== '' && !hash_equals($paid_token, $event_token)) {
                         self::note_superseded_link($order, $event_token, $new_state);
                         self::mark_event($order_id, $event_id);
@@ -105,7 +105,7 @@ class BANK_TRANSFER_PAYMENT_ENGINE
                      * payment is flagged for a refund.
                      */
                     $token = (string) ($payload['payment_token'] ?? '');
-                    $paid  = (string) $order->get_meta('_bank_transfer_pay_id');
+                    $paid  = (string) $order->get_meta('_rtbtch_pay_id');
                     if ($token !== '' && $paid !== '' && !hash_equals($paid, $token)) {
                         self::flag_duplicate_payment($order, $token, $event_type);
                         self::mark_event($order_id, $event_id);
@@ -152,7 +152,7 @@ class BANK_TRANSFER_PAYMENT_ENGINE
              */
             if (in_array($new_state, ['failed', 'cancelled', 'expired'], true)) {
                 $token  = (string) ($payload['payment_token'] ?? '');
-                $active = (string) $order->get_meta('_bank_transfer_active_pay_id');
+                $active = (string) $order->get_meta('_rtbtch_active_pay_id');
                 if ($token !== '' && $active !== '' && !hash_equals($active, $token)) {
                     self::note_superseded_link($order, $token, $new_state);
                     self::mark_event($order_id, $event_id);
@@ -181,7 +181,7 @@ class BANK_TRANSFER_PAYMENT_ENGINE
             }
 
             if (!$can_transition) {
-                Bank_Transfer_Payment_Gateway_Logger::warning('Refused invalid order state transition.', [
+                RTBTCH_Logger::warning('Refused invalid order state transition.', [
                     'order_id' => $order_id,
                     'from'     => $current_state,
                     'to'       => $new_state,
@@ -271,7 +271,7 @@ class BANK_TRANSFER_PAYMENT_ENGINE
             'payment_token' => $payload['payment_token'] ?? null,
         ];
 
-        $order->update_meta_data('_bank_transfer_timeline', $timeline);
+        $order->update_meta_data('_rtbtch_timeline', $timeline);
         $order->save();
     }
 
@@ -290,7 +290,7 @@ class BANK_TRANSFER_PAYMENT_ENGINE
         // stable idempotency key (VERY IMPORTANT)
         $state_lock_key = md5($order_id . '|' . $state . '|' . $payment_token);
 
-        $last_lock = $order->get_meta('_bank_transfer_state_lock');
+        $last_lock = $order->get_meta('_rtbtch_state_lock');
 
         // The lock only short-circuits a repeat of an event that already reached
         // WooCommerce. A 'success' lock on an order that is still unpaid means the
@@ -303,7 +303,7 @@ class BANK_TRANSFER_PAYMENT_ENGINE
             return;
         }
 
-        $order->update_meta_data('_bank_transfer_state_lock', $state_lock_key);
+        $order->update_meta_data('_rtbtch_state_lock', $state_lock_key);
 
         $wc_status = match ($state) {
             'success'    => self::get_success_wc_status(),
@@ -311,7 +311,7 @@ class BANK_TRANSFER_PAYMENT_ENGINE
             'failed'     => 'failed',
             'cancelled'  => 'cancelled',
             'expired'    => 'failed',
-            'returned'   => BANK_TRANSFER_RETURNED_STATUS,
+            'returned'   => RTBTCH_RETURNED_STATUS,
             default      => null
         };
 
@@ -338,25 +338,25 @@ class BANK_TRANSFER_PAYMENT_ENGINE
             }
         }
 
-        $order->update_meta_data('_bank_transfer_state', $state);
-        $order->update_meta_data('_bank_transfer_last_event', $event_type);
-        $order->update_meta_data('_bank_transfer_last_event_time', current_time('mysql'));
+        $order->update_meta_data('_rtbtch_state', $state);
+        $order->update_meta_data('_rtbtch_last_event', $event_type);
+        $order->update_meta_data('_rtbtch_last_event_time', current_time('mysql'));
 
         if (!empty($payment_token) && $state !== 'returned') {
-            $active = (string) $order->get_meta('_bank_transfer_active_pay_id');
+            $active = (string) $order->get_meta('_rtbtch_active_pay_id');
             if (in_array($state, ['success', 'processing'], true)) {
                 // This is the payment that is actually moving: watch it.
-                $order->update_meta_data('_bank_transfer_pay_id', $payment_token);
-                $order->update_meta_data('_bank_transfer_active_pay_id', $payment_token);
+                $order->update_meta_data('_rtbtch_pay_id', $payment_token);
+                $order->update_meta_data('_rtbtch_active_pay_id', $payment_token);
             } elseif ($active === '' || hash_equals($active, (string) $payment_token)) {
-                $order->update_meta_data('_bank_transfer_pay_id', $payment_token);
+                $order->update_meta_data('_rtbtch_pay_id', $payment_token);
             }
         }
 
         if ($state === 'success') {
-            $order->update_meta_data('_bank_transfer_payment_success', 'yes');
-            $order->update_meta_data('_bank_transfer_payment_finalized', true);
-            $order->update_meta_data('_bank_transfer_paid_amount', (float) $order->get_total());
+            $order->update_meta_data('_rtbtch_payment_success', 'yes');
+            $order->update_meta_data('_rtbtch_payment_finalized', true);
+            $order->update_meta_data('_rtbtch_paid_amount', (float) $order->get_total());
         }
 
         $order->save();
@@ -371,12 +371,12 @@ class BANK_TRANSFER_PAYMENT_ENGINE
      */
     private static function complete_payment($order, $wc_status, $payment_token)
     {
-        if ($order->get_meta('_is_test_order') && bank_transfer_is_production_environment()) {
+        if ($order->get_meta('_rtbtch_is_test_order') && rtbtch_is_production_environment()) {
             $order->update_status(
                 'on-hold',
                 __('This was a test payment. No real money was received. Because this is a live shop, the order was put on hold instead of being marked paid. Do not ship it.', 'rt-bank-transfer-checkout')
             );
-            $order->update_meta_data('_bank_transfer_sandbox_success_held', 'yes');
+            $order->update_meta_data('_rtbtch_sandbox_success_held', 'yes');
             return;
         }
 
@@ -410,12 +410,12 @@ class BANK_TRANSFER_PAYMENT_ENGINE
             $note .= ' ' . $reason;
         }
 
-        $order->update_meta_data('_bank_transfer_payment_returned', 'yes');
-        $order->update_meta_data('_bank_transfer_return_code', $return_code);
-        $order->update_meta_data('_bank_transfer_returned_at', current_time('mysql'));
-        $order->update_status(BANK_TRANSFER_RETURNED_STATUS, '');
+        $order->update_meta_data('_rtbtch_payment_returned', 'yes');
+        $order->update_meta_data('_rtbtch_return_code', $return_code);
+        $order->update_meta_data('_rtbtch_returned_at', current_time('mysql'));
+        $order->update_status(RTBTCH_RETURNED_STATUS, '');
 
-        bank_transfer_notify_admin(
+        rtbtch_notify_admin(
             sprintf(
                 /* translators: %s: order number */
                 __('Bank transfer payment returned for order #%s', 'rt-bank-transfer-checkout'),
@@ -431,10 +431,10 @@ class BANK_TRANSFER_PAYMENT_ENGINE
      */
     private static function return_already_recorded($order, $token)
     {
-        if ($order->get_meta('_bank_transfer_payment_returned') !== 'yes') {
+        if ($order->get_meta('_rtbtch_payment_returned') !== 'yes') {
             return false;
         }
-        $recorded = (string) $order->get_meta('_bank_transfer_returned_pay_id');
+        $recorded = (string) $order->get_meta('_rtbtch_returned_pay_id');
         return $recorded === '' || $token === '' || hash_equals($recorded, (string) $token);
     }
 
@@ -472,26 +472,26 @@ class BANK_TRANSFER_PAYMENT_ENGINE
             $note .= ' ' . implode(' ', $details);
         }
 
-        $order->update_meta_data('_bank_transfer_payment_returned', 'yes');
-        $order->update_meta_data('_bank_transfer_return_code', $return_code);
-        $order->update_meta_data('_bank_transfer_returned_pay_id', $token);
-        $order->update_meta_data('_bank_transfer_returned_at', current_time('mysql'));
-        $order->update_meta_data('_bank_transfer_last_event', $event_type);
-        $order->update_meta_data('_bank_transfer_last_event_time', current_time('mysql'));
+        $order->update_meta_data('_rtbtch_payment_returned', 'yes');
+        $order->update_meta_data('_rtbtch_return_code', $return_code);
+        $order->update_meta_data('_rtbtch_returned_pay_id', $token);
+        $order->update_meta_data('_rtbtch_returned_at', current_time('mysql'));
+        $order->update_meta_data('_rtbtch_last_event', $event_type);
+        $order->update_meta_data('_rtbtch_last_event_time', current_time('mysql'));
 
         if ($was_paid) {
-            $order->update_meta_data('_bank_transfer_state', 'returned');
-            $order->update_status(BANK_TRANSFER_RETURNED_STATUS, $note);
+            $order->update_meta_data('_rtbtch_state', 'returned');
+            $order->update_status(RTBTCH_RETURNED_STATUS, $note);
         } elseif ($order->has_status(['cancelled', 'refunded', 'failed'])) {
-            $order->update_meta_data('_bank_transfer_state', $order->has_status('cancelled') ? 'cancelled' : 'failed');
+            $order->update_meta_data('_rtbtch_state', $order->has_status('cancelled') ? 'cancelled' : 'failed');
             $order->add_order_note($note);
             $order->save();
         } else {
-            $order->update_meta_data('_bank_transfer_state', 'failed');
+            $order->update_meta_data('_rtbtch_state', 'failed');
             $order->update_status('failed', $note);
         }
 
-        bank_transfer_notify_admin(
+        rtbtch_notify_admin(
             sprintf(
                 /* translators: %s: order number */
                 __('Bank transfer payment returned for order #%s', 'rt-bank-transfer-checkout'),
@@ -508,19 +508,19 @@ class BANK_TRANSFER_PAYMENT_ENGINE
      */
     private static function note_superseded_link($order, $token, $state)
     {
-        $noted = $order->get_meta('_bank_transfer_superseded_links');
+        $noted = $order->get_meta('_rtbtch_superseded_links');
         $noted = is_array($noted) ? array_values(array_filter($noted, 'is_string')) : [];
         if (in_array($token, $noted, true)) {
             return;
         }
         $noted[] = $token;
-        $order->update_meta_data('_bank_transfer_superseded_links', $noted);
+        $order->update_meta_data('_rtbtch_superseded_links', $noted);
         $order->add_order_note(
             __('An older payment link for this order has closed. The order was not changed, because the customer has a newer payment link.', 'rt-bank-transfer-checkout')
         );
         $order->save();
 
-        Bank_Transfer_Payment_Gateway_Logger::info('Ignored a status for a superseded payment link.', [
+        RTBTCH_Logger::info('Ignored a status for a superseded payment link.', [
             'order_id' => $order->get_id(),
             'state'    => $state,
         ]);
@@ -532,21 +532,21 @@ class BANK_TRANSFER_PAYMENT_ENGINE
      */
     private static function flag_duplicate_payment($order, $token, $event_type)
     {
-        $flagged = $order->get_meta('_bank_transfer_duplicate_payments');
+        $flagged = $order->get_meta('_rtbtch_duplicate_payments');
         $flagged = is_array($flagged) ? array_values(array_filter($flagged, 'is_string')) : [];
         if (in_array($token, $flagged, true)) {
             return;
         }
         $flagged[] = $token;
-        $order->update_meta_data('_bank_transfer_duplicate_payments', $flagged);
+        $order->update_meta_data('_rtbtch_duplicate_payments', $flagged);
         $order->save();
 
-        Bank_Transfer_Payment_Gateway_Logger::warning('Duplicate settled payment flagged for an already paid order.', [
+        RTBTCH_Logger::warning('Duplicate settled payment flagged for an already paid order.', [
             'order_id'   => $order->get_id(),
             'event_type' => $event_type,
         ]);
 
-        bank_transfer_notify_admin(
+        rtbtch_notify_admin(
             sprintf(
                 /* translators: %s: order number */
                 __('Duplicate bank transfer payment on order #%s', 'rt-bank-transfer-checkout'),
@@ -556,7 +556,7 @@ class BANK_TRANSFER_PAYMENT_ENGINE
                 /* translators: 1: payment id of the duplicate, 2: payment id the order was paid with */
                 __('The customer has paid for this order twice (RT payment references %1$s and %2$s). The order was not changed. Refund the extra payment in your RT account.', 'rt-bank-transfer-checkout'),
                 $token,
-                (string) $order->get_meta('_bank_transfer_pay_id')
+                (string) $order->get_meta('_rtbtch_pay_id')
             ),
             $order
         );
@@ -564,7 +564,7 @@ class BANK_TRANSFER_PAYMENT_ENGINE
 
     private static function get_timeline($order)
     {
-        $data = $order->get_meta('_bank_transfer_timeline', true);
+        $data = $order->get_meta('_rtbtch_timeline', true);
 
         if (empty($data)) {
             return [];
@@ -644,7 +644,7 @@ class BANK_TRANSFER_PAYMENT_ENGINE
         /**
          * FAILED NOTES
          */
-        $already_synced = (int) $order->get_meta('_bank_transfer_failed_note_count');
+        $already_synced = (int) $order->get_meta('_rtbtch_failed_note_count');
 
         $actual_failed_count = count($failed_events);
 
@@ -667,7 +667,7 @@ class BANK_TRANSFER_PAYMENT_ENGINE
             }
 
             $order->update_meta_data(
-                '_bank_transfer_failed_note_count',
+                '_rtbtch_failed_note_count',
                 $actual_failed_count
             );
         }
@@ -677,7 +677,7 @@ class BANK_TRANSFER_PAYMENT_ENGINE
          */
         if (
             $success_event &&
-            !$order->get_meta('_bank_transfer_success_note_added')
+            !$order->get_meta('_rtbtch_success_note_added')
         ) {
 
             $order->add_order_note(
@@ -689,7 +689,7 @@ class BANK_TRANSFER_PAYMENT_ENGINE
             );
 
             $order->update_meta_data(
-                '_bank_transfer_success_note_added',
+                '_rtbtch_success_note_added',
                 'yes'
             );
         }
@@ -699,7 +699,7 @@ class BANK_TRANSFER_PAYMENT_ENGINE
          */
         if (
             $cancel_event &&
-            !$order->get_meta('_bank_transfer_cancel_note_added')
+            !$order->get_meta('_rtbtch_cancel_note_added')
         ) {
 
             $order->add_order_note(
@@ -711,7 +711,7 @@ class BANK_TRANSFER_PAYMENT_ENGINE
             );
 
             $order->update_meta_data(
-                '_bank_transfer_cancel_note_added',
+                '_rtbtch_cancel_note_added',
                 'yes'
             );
         }
@@ -802,7 +802,7 @@ class BANK_TRANSFER_PAYMENT_ENGINE
         return match ($state) {
             'completed' => 'success',
             'canceled'  => 'cancelled',
-            BANK_TRANSFER_RETURNED_STATUS => 'returned',
+            RTBTCH_RETURNED_STATUS => 'returned',
             default     => $state
         };
     }
@@ -849,11 +849,11 @@ class BANK_TRANSFER_PAYMENT_ENGINE
             return 'cancelled';
         }
 
-        if ($wc_status === BANK_TRANSFER_RETURNED_STATUS) {
+        if ($wc_status === RTBTCH_RETURNED_STATUS) {
             return 'returned';
         }
 
-        $meta_state = $order->get_meta('_bank_transfer_state');
+        $meta_state = $order->get_meta('_rtbtch_state');
         if (!empty($meta_state)) {
             return $meta_state;
         }
@@ -876,7 +876,7 @@ class BANK_TRANSFER_PAYMENT_ENGINE
      * ========================================================= */
     private static function get_success_wc_status()
     {
-        $settings = bank_transfer_get_settings();
+        $settings = rtbtch_get_settings();
         $status = $settings['order_status'] ?? 'processing';
 
         return in_array($status, ['processing','completed'], true)
@@ -898,12 +898,12 @@ class BANK_TRANSFER_PAYMENT_ENGINE
 
     private static function is_duplicate_event($order_id, $event_id)
     {
-        return get_transient("bank_transfer_event_{$order_id}_{$event_id}") !== false;
+        return get_transient("rtbtch_event_{$order_id}_{$event_id}") !== false;
     }
 
     private static function mark_event($order_id, $event_id)
     {
-        set_transient("bank_transfer_event_{$order_id}_{$event_id}", 1, self::EVENT_TTL);
+        set_transient("rtbtch_event_{$order_id}_{$event_id}", 1, self::EVENT_TTL);
     }
 
     /* =========================================================

@@ -4,12 +4,12 @@ if (!defined('ABSPATH')) {
 }
 
 require_once plugin_dir_path(__FILE__) . 'config.php';
-require_once plugin_dir_path(__FILE__) . 'bank-transfer-payment-gateway-utils.php';
+require_once plugin_dir_path(__FILE__) . 'rt-bank-transfer-payment-gateway-utils.php';
 require_once plugin_dir_path(__FILE__) . 'class-bank-transfer-payment-logger.php';
 
-class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
+class RTBTCH_GATEWAY extends WC_Payment_Gateway_CC
 {
-	const ID = BANK_TRANSFER_GATEWAY_ID;
+	const ID = RTBTCH_GATEWAY_ID;
 
 	protected $sandbox;
 	private $base_url;
@@ -38,21 +38,21 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	 */
 	public function __construct() {
 		if (!class_exists('WC_Payment_Gateway_CC')) {
-			add_action('admin_notices', [$this, 'bank_transfer_woocommerce_not_active_notice']);
+			add_action('admin_notices', [$this, 'rtbtch_woocommerce_not_active_notice']);
 			return;
 		}
 
-		$this->admin_notices = new BANK_TRANSFER_PAYMENT_GATEWAY_Admin_Notices();
-		$this->base_url      = BANK_TRANSFER_BASE_URL;
+		$this->admin_notices = new RTBTCH_GATEWAY_Admin_Notices();
+		$this->base_url      = RTBTCH_BASE_URL;
 
 		$this->id                 = self::ID;
 		$this->icon               = '';
 		$this->method_title       = __('RT Bank Transfer', 'rt-bank-transfer-checkout');
 		$this->method_description = __('Let shoppers pay from their US bank account. Bank payments take 1 to 5 business days to arrive. Refunds are made in RT, not here: open the payment in your RT account and refund it there.', 'rt-bank-transfer-checkout');
 
-		$this->bank_transfer_init_form_fields();
+		$this->rtbtch_init_form_fields();
 		$this->init_settings();
-		$this->settings['group_id'] = get_option('bank_transfer_group_id') ? get_option('bank_transfer_group_id') : $this->bank_transfer_get_group_id();
+		$this->settings['group_id'] = get_option('rtbtch_group_id') ? get_option('rtbtch_group_id') : $this->rtbtch_get_group_id();
 		$this->load_gateway_settings();
 
 		$this->register_hooks();
@@ -68,10 +68,10 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	 * @return string
 	 */
 	public function get_plugin_version() {
-		if (function_exists('bank_transfer_get_plugin_version')) {
-			return bank_transfer_get_plugin_version();
+		if (function_exists('rtbtch_get_plugin_version')) {
+			return rtbtch_get_plugin_version();
 		}
-		return defined('BANK_TRANSFER_PLUGIN_VERSION') ? BANK_TRANSFER_PLUGIN_VERSION : '1.0.0';
+		return defined('RTBTCH_PLUGIN_VERSION') ? RTBTCH_PLUGIN_VERSION : '1.0.0';
 	}
 
 	/**
@@ -80,7 +80,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	 * @param WC_Order $order
 	 * @param array $data
 	 */
-	public function bank_transfer_add_order_meta($order, $data = []) {
+	public function rtbtch_add_order_meta($order, $data = []) {
 		if (!$order instanceof WC_Order) {
 			return;
 		}
@@ -89,8 +89,8 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		if (empty($payment_method) || $payment_method === $this->id) {
 			$version = $this->get_plugin_version();
 			if (!empty($version)) {
-				$order->update_meta_data('_bank_transfer_plugin_version', sanitize_text_field($version));
-				$order->update_meta_data('bank_transfer_plugin_version', sanitize_text_field($version));
+				$order->update_meta_data('_rtbtch_plugin_version', sanitize_text_field($version));
+				$order->update_meta_data('rtbtch_plugin_version', sanitize_text_field($version));
 			}
 		}
 	}
@@ -171,19 +171,19 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	 * Register hooks for the gateway.
 	 */
 	private function register_hooks() {
-		add_action('woocommerce_update_options_payment_gateways_' . $this->id, [$this, 'bank_transfer_process_admin_options']);
-		add_action('woocommerce_checkout_create_order', [$this, 'bank_transfer_add_order_meta'], 10, 2);
-		add_action('wp_enqueue_scripts', [$this, 'bank_transfer_enqueue_styles_and_scripts']);
-		add_action('admin_enqueue_scripts', [$this, 'bank_transfer_admin_scripts']);
+		add_action('woocommerce_update_options_payment_gateways_' . $this->id, [$this, 'rtbtch_process_admin_options']);
+		add_action('woocommerce_checkout_create_order', [$this, 'rtbtch_add_order_meta'], 10, 2);
+		add_action('wp_enqueue_scripts', [$this, 'rtbtch_enqueue_styles_and_scripts']);
+		add_action('admin_enqueue_scripts', [$this, 'rtbtch_admin_scripts']);
 
-		add_action('woocommerce_admin_order_data_after_order_details', [$this, 'bank_transfer_display_test_order_tag']);
-		add_filter('woocommerce_admin_order_preview_line_items', [$this, 'bank_transfer_add_custom_label_to_order_row'], 10, 2);
-		add_filter('woocommerce_available_payment_gateways', [$this, 'bank_transfer_hide_custom_payment_gateway_conditionally']);
+		add_action('woocommerce_admin_order_data_after_order_details', [$this, 'rtbtch_display_test_order_tag']);
+		add_filter('woocommerce_admin_order_preview_line_items', [$this, 'rtbtch_add_custom_label_to_order_row'], 10, 2);
+		add_filter('woocommerce_available_payment_gateways', [$this, 'rtbtch_hide_custom_payment_gateway_conditionally']);
 
-		add_action('woocommerce_after_checkout_validation', [$this, 'bank_transfer_validate_checkout_fields'], 10, 2);
+		add_action('woocommerce_after_checkout_validation', [$this, 'rtbtch_validate_checkout_fields'], 10, 2);
 		add_action(
 			'woocommerce_store_api_checkout_update_order_from_request',
-			[$this, 'bank_transfer_validate_blocks_checkout'],
+			[$this, 'rtbtch_validate_blocks_checkout'],
 			10,
 			2
 		);
@@ -193,7 +193,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	 * Strict validation for Phone and Zip Code.
 	 * Runs before process_payment to ensure only clean data reaches your API.
 	 */
-	public function bank_transfer_validate_checkout_fields($data, $errors)
+	public function rtbtch_validate_checkout_fields($data, $errors)
 	{
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing
 		$selected_gateway = isset($data['payment_method']) ? sanitize_text_field($data['payment_method']) : (isset($_POST['payment_method']) ? sanitize_text_field(wp_unslash($_POST['payment_method'])) : '');
@@ -222,14 +222,14 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				$country_calling_code = reset($country_calling_code);
 			}
 
-			$normalized = $this->bank_transfer_normalize_phone(
+			$normalized = $this->rtbtch_normalize_phone(
 				$phone,
 				$country_calling_code
 			);
 
 			if (empty($normalized['is_valid'])) {
 
-				Bank_Transfer_Payment_Gateway_Logger::warning(
+				RTBTCH_Logger::warning(
 					'Classic checkout validation failed: invalid phone number',
 					[
 						'phone'      => $phone,
@@ -240,14 +240,14 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				);
 
 				$errors->add(
-					'bank_transfer_phone_error',
+					'rtbtch_phone_error',
 					$normalized['error'] ?? __('Please check your phone number. Enter it with the area code, for example 415 555 0132.', 'rt-bank-transfer-checkout')
 				);
 
 				return;
 			}
 
-			Bank_Transfer_Payment_Gateway_Logger::info(
+			RTBTCH_Logger::info(
 				'Classic checkout phone validation passed',
 				[
 					'phone'      => $phone,
@@ -266,7 +266,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		if (!empty($billing_address_1) && $this->is_po_box($billing_address_1)) {
 
-			Bank_Transfer_Payment_Gateway_Logger::warning(
+			RTBTCH_Logger::warning(
 				'Classic checkout validation failed: PO Box detected',
 				[
 					'country' => $country,
@@ -274,7 +274,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			);
 
 			$errors->add(
-				'bank_transfer_po_box_error',
+				'rtbtch_po_box_error',
 				__('Bank transfer needs a street address, not a PO Box. Please enter your street address.', 'rt-bank-transfer-checkout')
 			);
 
@@ -328,7 +328,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			if (!$valid) {
 
-				Bank_Transfer_Payment_Gateway_Logger::warning(
+				RTBTCH_Logger::warning(
 					'Classic checkout validation failed: invalid postcode',
 					[
 						'postcode' => $postcode,
@@ -337,14 +337,14 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				);
 
 				$errors->add(
-					'bank_transfer_postcode_error',
+					'rtbtch_postcode_error',
 					__('Please check your ZIP / postal code.', 'rt-bank-transfer-checkout')
 				);
 
 				return;
 			}
 
-			Bank_Transfer_Payment_Gateway_Logger::info(
+			RTBTCH_Logger::info(
 				'Classic checkout postcode validation passed',
 				[
 					'postcode' => $postcode,
@@ -355,7 +355,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	}
 
 
-	public function bank_transfer_validate_blocks_checkout($order, $request)
+	public function rtbtch_validate_blocks_checkout($order, $request)
 	{
 		$payment_method = $request['payment_method'] ?? '';
 
@@ -383,14 +383,14 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				$country_calling_code = reset($country_calling_code);
 			}
 
-			$normalized = $this->bank_transfer_normalize_phone(
+			$normalized = $this->rtbtch_normalize_phone(
 				$phone,
 				$country_calling_code
 			);
 
 			if (empty($normalized['is_valid'])) {
 
-				Bank_Transfer_Payment_Gateway_Logger::warning(
+				RTBTCH_Logger::warning(
 					'Blocks checkout validation failed: invalid phone number',
 					[
 						'phone'      => $phone,
@@ -402,13 +402,13 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				);
 
 				// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- the helper escapes the message.
-				throw $this->bank_transfer_checkout_exception($normalized['error'] ?? __('Please check your phone number. Enter it with the area code, for example 415 555 0132.', 'rt-bank-transfer-checkout'));
+				throw $this->rtbtch_checkout_exception($normalized['error'] ?? __('Please check your phone number. Enter it with the area code, for example 415 555 0132.', 'rt-bank-transfer-checkout'));
 			}
 
 			// Sync latest validated value to order
 			$order->set_billing_phone($phone);
 
-			Bank_Transfer_Payment_Gateway_Logger::info(
+			RTBTCH_Logger::info(
 				'Blocks checkout phone validation passed',
 				[
 					'phone'      => $phone,
@@ -428,7 +428,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		if (!empty($billing_address_1) && $this->is_po_box($billing_address_1)) {
 
-			Bank_Transfer_Payment_Gateway_Logger::warning(
+			RTBTCH_Logger::warning(
 				'Blocks checkout validation failed: PO Box detected',
 				[
 					'country'  => $country,
@@ -437,7 +437,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			);
 
 			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- the helper escapes the message.
-			throw $this->bank_transfer_checkout_exception(__('Bank transfer needs a street address, not a PO Box. Please enter your street address.', 'rt-bank-transfer-checkout'));
+			throw $this->rtbtch_checkout_exception(__('Bank transfer needs a street address, not a PO Box. Please enter your street address.', 'rt-bank-transfer-checkout'));
 		}
 
 		/*
@@ -487,7 +487,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			if (!$valid) {
 
-				Bank_Transfer_Payment_Gateway_Logger::warning(
+				RTBTCH_Logger::warning(
 					'Blocks checkout validation failed: invalid postcode',
 					[
 						'postcode' => $postcode,
@@ -497,12 +497,12 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				);
 
 				// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- the helper escapes the message.
-				throw $this->bank_transfer_checkout_exception(__('Please check your ZIP / postal code.', 'rt-bank-transfer-checkout'));
+				throw $this->rtbtch_checkout_exception(__('Please check your ZIP / postal code.', 'rt-bank-transfer-checkout'));
 			}
 
 			$order->set_billing_postcode($postcode);
 
-			Bank_Transfer_Payment_Gateway_Logger::info(
+			RTBTCH_Logger::info(
 				'Blocks checkout postcode validation passed',
 				[
 					'postcode' => $postcode,
@@ -522,10 +522,10 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	 * @param string $message
 	 * @return \Exception
 	 */
-	private function bank_transfer_checkout_exception($message) {
+	private function rtbtch_checkout_exception($message) {
 		if (class_exists('\Automattic\WooCommerce\StoreApi\Exceptions\RouteException')) {
 			return new \Automattic\WooCommerce\StoreApi\Exceptions\RouteException(
-				'rt_bank_transfer_invalid_address',
+				'rtbtch_invalid_address',
 				esc_html($message),
 				400
 			);
@@ -547,23 +547,23 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	private function get_api_url($endpoint) {
 		$endpoint = '/' . ltrim($endpoint, '/');
 		if (strpos($endpoint, '/payment-api/') === 0) {
-			return BANK_TRANSFER_BASE_URL . $endpoint;
+			return RTBTCH_BASE_URL . $endpoint;
 		}
 		if (strpos($endpoint, '/api/') === 0) {
 			$endpoint = substr($endpoint, 4);
 		}
-		$api_base = defined('BANK_TRANSFER_API_BASE_URL') ? BANK_TRANSFER_API_BASE_URL : ($this->base_url . '/payment-api');
+		$api_base = defined('RTBTCH_API_BASE_URL') ? RTBTCH_API_BASE_URL : ($this->base_url . '/payment-api');
 		return $api_base . $endpoint;
 	}
 
-	public function bank_transfer_process_admin_options() {
+	public function rtbtch_process_admin_options() {
 		// BT-12: Check capabilities and nonce BEFORE processing options
 		if (!current_user_can('manage_woocommerce')) {
 			wp_die(esc_html__('You do not have permission to change these settings. Ask the shop owner or an administrator.', 'rt-bank-transfer-checkout'));
 		}
 
-		if (!isset($_POST['bank_transfer_accounts_nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['bank_transfer_accounts_nonce'])), 'bank_transfer_accounts_nonce_action')) {
-			Bank_Transfer_Payment_Gateway_Logger::info('CSRF check failed during admin options update.');
+		if (!isset($_POST['rtbtch_accounts_nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['rtbtch_accounts_nonce'])), 'rtbtch_accounts_nonce_action')) {
+			RTBTCH_Logger::info('CSRF check failed during admin options update.');
 			wp_die(esc_html__('This page was open for too long. Go back, refresh the settings page and save again.', 'rt-bank-transfer-checkout'));
 		}
 
@@ -610,11 +610,11 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		$no_accounts_submitted = (!is_array($raw_accounts) || empty($raw_accounts));
 		if ($no_accounts_submitted) {
-			Bank_Transfer_Payment_Gateway_Logger::info('No accounts submitted in admin options.');
+			RTBTCH_Logger::info('No accounts submitted in admin options.');
 		}
 
 		// BK-09: only this plugin's own accounts; never another plugin's keys.
-		$existing_accounts = bank_transfer_get_accounts();
+		$existing_accounts = rtbtch_get_accounts();
 
 		$existing_by_id = [];
 		foreach ($existing_accounts as $idx => $existing_acc) {
@@ -644,7 +644,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			$submitted_unique_id = $unique_id;
 			if (empty($unique_id)) {
 				// Back-fill missing IDs here, on save, rather than while rendering the settings page.
-				$unique_id = $this->bank_transfer_get_unique_id();
+				$unique_id = $this->rtbtch_get_unique_id();
 			}
 			$checkout_title      = $account['checkout_title'] ?? '';
 	        $checkout_subtitle   = $account['checkout_subtitle'] ?? '';
@@ -678,7 +678,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			if (empty($account_title)) {
 				$errors[] = __('Give each payment account a name, for example "Main account".', 'rt-bank-transfer-checkout');
-				Bank_Transfer_Payment_Gateway_Logger::info('Validation failed: an account has no name.');
+				RTBTCH_Logger::info('Validation failed: an account has no name.');
 				continue;
 			}
 
@@ -689,21 +689,21 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			if (!$has_live_keys && (!empty($live_public_key) || !empty($live_secret_key))) {
 				/* translators: %s: Account name */
 				$errors[] = sprintf(__('Account "%s": paste both live keys (publishable and secret), or leave both live boxes empty to test with sandbox keys only.', 'rt-bank-transfer-checkout'), $account_title);
-				Bank_Transfer_Payment_Gateway_Logger::info("Validation failed: incomplete live keys for account '{$account_title}'");
+				RTBTCH_Logger::info("Validation failed: incomplete live keys for account '{$account_title}'");
 				continue;
 			}
 
 			if ($has_sandbox && !$has_sandbox_keys) {
 				/* translators: %s: Account name */
 				$errors[] = sprintf(__('Account "%s": paste both sandbox keys (publishable and secret), or untick "I have sandbox (test) keys".', 'rt-bank-transfer-checkout'), $account_title);
-				Bank_Transfer_Payment_Gateway_Logger::info("Validation failed: missing sandbox keys for account '{$account_title}'");
+				RTBTCH_Logger::info("Validation failed: missing sandbox keys for account '{$account_title}'");
 				continue;
 			}
 
 			if (!$has_live_keys && !$has_sandbox_keys) {
 				/* translators: %s: Account name */
 				$errors[] = sprintf(__('Account "%s": add your sandbox keys to test, or your live keys to take real payments. You can copy them in RT under Developers.', 'rt-bank-transfer-checkout'), $account_title);
-				Bank_Transfer_Payment_Gateway_Logger::info("Validation failed: no keys for account '{$account_title}'");
+				RTBTCH_Logger::info("Validation failed: no keys for account '{$account_title}'");
 				continue;
 			}
 
@@ -712,14 +712,14 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				if (in_array($live_combined, $unique_live_keys, true)) {
 					/* translators: %s: Account name */
 					$errors[] = sprintf(__('Account "%s": these live keys are already used by another account on this page. Remove one of the two accounts.', 'rt-bank-transfer-checkout'), $account_title);
-					Bank_Transfer_Payment_Gateway_Logger::info("Validation failed: duplicate live keys for account '{$account_title}'");
+					RTBTCH_Logger::info("Validation failed: duplicate live keys for account '{$account_title}'");
 					continue;
 				}
 
 				if ($live_public_key === $live_secret_key) {
 					/* translators: %s: Account name */
 					$errors[] = sprintf(__('Account "%s": the live publishable key and live secret key are the same. Paste your secret key in the second box.', 'rt-bank-transfer-checkout'), $account_title);
-					Bank_Transfer_Payment_Gateway_Logger::info("Validation failed: live keys are identical for account '{$account_title}'");
+					RTBTCH_Logger::info("Validation failed: live keys are identical for account '{$account_title}'");
 					continue;
 				}
 
@@ -736,13 +736,13 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				if (in_array($sandbox_combined, $unique_sandbox_keys, true)) {
 					/* translators: %s: Account name */
 					$errors[] = sprintf(__('Account "%s": these sandbox keys are already used by another account on this page. Remove one of the two accounts.', 'rt-bank-transfer-checkout'), $account_title);
-					Bank_Transfer_Payment_Gateway_Logger::info("Validation failed: duplicate sandbox keys for account '{$account_title}'");
+					RTBTCH_Logger::info("Validation failed: duplicate sandbox keys for account '{$account_title}'");
 					continue;
 				}
 				if ($sandbox_public_key === $sandbox_secret_key) {
 					/* translators: %s: Account name */
 					$errors[] = sprintf(__('Account "%s": the sandbox publishable key and sandbox secret key are the same. Paste your sandbox secret key in the second box.', 'rt-bank-transfer-checkout'), $account_title);
-					Bank_Transfer_Payment_Gateway_Logger::info("Validation failed: sandbox keys are identical for account '{$account_title}'");
+					RTBTCH_Logger::info("Validation failed: sandbox keys are identical for account '{$account_title}'");
 					continue;
 				}
 				$unique_sandbox_keys[] = $sandbox_combined;
@@ -790,7 +790,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	            'checkout_subtitle'  => $checkout_subtitle,
 			];
 
-			Bank_Transfer_Payment_Gateway_Logger::info("Validated and added account '{$account_title}' to saved list.");
+			RTBTCH_Logger::info("Validated and added account '{$account_title}' to saved list.");
 		}
 
 		if (empty($valid_accounts) && empty($errors)) {
@@ -798,8 +798,8 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			// install, or the business removed its last account). Save it, and
 			// say what to do next. Checkout hides bank transfer until an
 			// approved account exists, so shoppers are never offered it.
-			update_option(BANK_TRANSFER_ACCOUNTS_OPTION, [], false);
-			$this->admin_notices->bank_transfer_add_notice(
+			update_option(RTBTCH_ACCOUNTS_OPTION, [], false);
+			$this->admin_notices->rtbtch_add_notice(
 				'no_accounts',
 				'notice notice-warning',
 				__('Add a payment account to accept bank payments. Bank transfer stays hidden at checkout until an account is added and approved.', 'rt-bank-transfer-checkout')
@@ -809,7 +809,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 
 		if (empty($errors)) {
-			update_option(BANK_TRANSFER_ACCOUNTS_OPTION, $valid_accounts, false);
+			update_option(RTBTCH_ACCOUNTS_OPTION, $valid_accounts, false);
 
 			$first_account = !empty($valid_accounts) ? reset($valid_accounts) : null;
 			$public_key    = $first_account ? ($this->sandbox ? ($first_account['sandbox_public_key'] ?? '') : ($first_account['live_public_key'] ?? '')) : '';
@@ -826,14 +826,14 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				'plugin_status'  => $enabled === 'yes' ? 1 : 0,
 				'plugin_version' => $plugin_version,
 				'gateway_loaded' => 0,
-				'group_id'       => get_option('bank_transfer_group_id'),
+				'group_id'       => get_option('rtbtch_group_id'),
 				'domain_name'    => wp_parse_url(home_url(), PHP_URL_HOST),
 				'wordpress_version'     => get_bloginfo('version'),
 				'woocommerce_version'   => get_option('woocommerce_version') ?: '',
 				'woocommerce_db_version'=> get_option('woocommerce_db_version'),
 			];
 
-			if (bank_transfer_telemetry_allowed()) {
+			if (rtbtch_telemetry_allowed()) {
 				wp_remote_post($api_url, [
 					'method'    => 'POST',
 					'timeout'   => 30,
@@ -846,78 +846,78 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				]);
 			}
 
-			Bank_Transfer_Payment_Gateway_Logger::info('Account settings updated successfully.', ['count' => count($valid_accounts)]);
+			RTBTCH_Logger::info('Account settings updated successfully.', ['count' => count($valid_accounts)]);
 
-			if (class_exists('BANK_TRANSFER_PAYMENT_GATEWAY_Loader')) {
-				$loader = BANK_TRANSFER_PAYMENT_GATEWAY_Loader::get_instance();
+			if (class_exists('RTBTCH_GATEWAY_Loader')) {
+				$loader = RTBTCH_GATEWAY_Loader::get_instance();
 				if (method_exists($loader, 'handle_cron_event')) {
 					$loader->handle_cron_event();
-					Bank_Transfer_Payment_Gateway_Logger::info('Triggered BANK_TRANSFER_PAYMENT_GATEWAY_Loader::handle_cron_event() after settings save.');
+					RTBTCH_Logger::info('Triggered RTBTCH_GATEWAY_Loader::handle_cron_event() after settings save.');
 
 					// Say plainly whether RT accepted the keys that were just saved.
-					$sync_problem = method_exists($loader, 'bank_transfer_last_sync_problem') ? $loader->bank_transfer_last_sync_problem($this->sandbox) : '';
+					$sync_problem = method_exists($loader, 'rtbtch_last_sync_problem') ? $loader->rtbtch_last_sync_problem($this->sandbox) : '';
 					if ($sync_problem !== '') {
-						$this->admin_notices->bank_transfer_add_notice('sync_problem', 'notice notice-error', $sync_problem);
+						$this->admin_notices->rtbtch_add_notice('sync_problem', 'notice notice-error', $sync_problem);
 					}
 				}
 			}
 		} else {
-			$this->admin_notices->bank_transfer_add_notice(
+			$this->admin_notices->rtbtch_add_notice(
 				'settings_error_intro',
 				'notice notice-error',
 				__('Your payment accounts were not saved. Fix the following and save again:', 'rt-bank-transfer-checkout')
 			);
 			foreach ($errors as $error) {
-				$this->admin_notices->bank_transfer_add_notice('settings_error', 'notice notice-error', $error);
-				Bank_Transfer_Payment_Gateway_Logger::info("Admin settings error: {$error}");
+				$this->admin_notices->rtbtch_add_notice('settings_error', 'notice notice-error', $error);
+				RTBTCH_Logger::info("Admin settings error: {$error}");
 			}
 		}
 
 		add_action('admin_notices', [$this->admin_notices, 'display_notices']);
 	}
 
-	public function bank_transfer_init_form_fields() {
-		$this->form_fields = $this->bank_transfer_get_form_fields();
+	public function rtbtch_init_form_fields() {
+		$this->form_fields = $this->rtbtch_get_form_fields();
 	}
 
-	function bank_transfer_get_group_id() {
-		$group_id = get_option('bank_transfer_group_id');
+	function rtbtch_get_group_id() {
+		$group_id = get_option('rtbtch_group_id');
 		if (empty($group_id)) {
 			$group_id = 'grp_' . wp_generate_uuid4();
-			update_option('bank_transfer_group_id', $group_id);
+			update_option('rtbtch_group_id', $group_id);
 		}
 		return $group_id;
 	}
 
-	function bank_transfer_get_unique_id() {
+	function rtbtch_get_unique_id() {
 		return 'acc_' . wp_generate_uuid4();
 	}
 
-	function update_accounts_uniqueID($accounts) {
+	function rtbtch_update_accounts_unique_id($accounts) {
 		if (empty($accounts) || !is_array($accounts)) return $accounts;
 		$updated = false;
 		foreach ($accounts as $index => &$account) {
 			if (!is_array($account)) continue;
 			if (empty($account['unique_id'])) {
-				$account['unique_id'] = $this->bank_transfer_get_unique_id();
+				$account['unique_id'] = $this->rtbtch_get_unique_id();
 				$updated = true;
 			}
 		}
 		unset($account);
 		if ($updated) {
-			update_option(BANK_TRANSFER_ACCOUNTS_OPTION, $accounts);
+			update_option(RTBTCH_ACCOUNTS_OPTION, $accounts);
 		}
 		return $accounts;
 	}
 
-	public function bank_transfer_get_form_fields() {
+	public function rtbtch_get_form_fields() {
 		$dev_instructions_link = sprintf(
-			'<strong><a class="bank-transfer-instructions-url" href="%s" target="_blank" rel="noopener noreferrer">%s</a></strong><br>',
+			'<strong><a class="rt-bank-transfer-instructions-url" href="%s" target="_blank" rel="noopener noreferrer">%s</a></strong><br>',
 			esc_url($this->base_url . '/developer'),
 			esc_html__('Open the Developers page in RT', 'rt-bank-transfer-checkout')
 		);
 
-		return apply_filters('bank_transfer_woocommerce_gateway_settings_fields_' . $this->id, [
+		return apply_filters('rtbtch_woocommerce_gateway_settings_fields_' . $this->id, [
 
 			'enabled' => [
 				'title'   => __('Turn on', 'rt-bank-transfer-checkout'),
@@ -1015,15 +1015,15 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	}
 
 	public function generate_accounts_repeater_html($key, $data) {
-		$option_value    = bank_transfer_get_accounts();
-		$sandbox_enabled = bank_transfer_is_sandbox();
+		$option_value    = rtbtch_get_accounts();
+		$sandbox_enabled = rtbtch_is_sandbox();
 
 		// Render-only normalisation. This method runs on a GET of the settings page, so it must not
 		// write options; missing unique_ids are persisted by the save handler and the migration.
 		if (!empty($option_value)) {
 			foreach ($option_value as $index => &$account) {
 				if (empty($account['unique_id'])) {
-					$account['unique_id'] = $this->bank_transfer_get_unique_id();
+					$account['unique_id'] = $this->rtbtch_get_unique_id();
 				}
 				// Ensure all fields are present for new/empty accounts
 				if (!isset($account['checkout_title'])) {
@@ -1044,10 +1044,10 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			</th>
 			<td class="forminp">
 				<p class="description" style="margin-bottom: 10px;"><?php echo esc_html($data['description'] ?? ''); ?></p>
-				<div id="bank-transfer-global-error" class="bank-transfer-global-error" style="color: #b32d2e; margin-bottom: 10px;" role="alert"></div>
-				<div class="bank-transfer-accounts-container">
+				<div id="rt-bank-transfer-global-error" class="rt-bank-transfer-global-error" style="color: #b32d2e; margin-bottom: 10px;" role="alert"></div>
+				<div class="rt-bank-transfer-accounts-container">
 					<?php if (!empty($option_value)): ?>
-						<div class="bank-transfer-sync-account">
+						<div class="rt-bank-transfer-sync-account">
 							<span id="<?php echo esc_attr($this->id); ?>-sync-status"></span>
 							<button type="button" class="button" id="<?php echo esc_attr($this->id); ?>-sync-accounts"><span><i class="fa fa-refresh" aria-hidden="true"></i></span> <?php esc_html_e('Check with RT', 'rt-bank-transfer-checkout'); ?></button>
 						</div>
@@ -1062,19 +1062,19 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 							$sandbox_status = (!empty($account['sandbox_status'])) ? $account['sandbox_status'] : 'unknown';
 							$unique_id      = (!empty($account['unique_id'])) ? $account['unique_id'] : '';
 							?>
-							<div class="bank-transfer-account" data-index="<?php echo esc_attr($index); ?>">
+							<div class="rt-bank-transfer-account" data-index="<?php echo esc_attr($index); ?>">
 								<input type="hidden" class="live-status" name="accounts[<?php echo esc_attr($index); ?>][live_status]" value="<?php echo esc_attr($account['live_status'] ?? ''); ?>">
 								<input type="hidden" class="sandbox-status" name="accounts[<?php echo esc_attr($index); ?>][sandbox_status]" value="<?php echo esc_attr($account['sandbox_status'] ?? ''); ?>">
 								<div class="title-blog">
 									<h4>
-										<span class="account-name-display bank-transfer-name-display">
+										<span class="account-name-display rt-bank-transfer-name-display">
 											<?php echo !empty($account['title']) ? esc_html($account['title']) : esc_html__('New account', 'rt-bank-transfer-checkout'); ?>
 										</span>
-										&nbsp;<i class="fa fa-caret-down bank-transfer-toggle-btn account-toggle-btn" aria-hidden="true"></i>
+										&nbsp;<i class="fa fa-caret-down rt-bank-transfer-toggle-btn account-toggle-btn" aria-hidden="true"></i>
 									</h4>
 									<div class="action-button">
 										<div class="account-status-block">
-											<?php $shown_status = bank_transfer_account_status_view($sandbox_enabled ? $sandbox_status : $live_status, $sandbox_enabled); ?>
+											<?php $shown_status = rtbtch_account_status_view($sandbox_enabled ? $sandbox_status : $live_status, $sandbox_enabled); ?>
 											<span class="account-status-label <?php echo esc_attr($shown_status['class']); ?>" title="<?php echo esc_attr($shown_status['help']); ?>">
 												<?php echo esc_html($shown_status['label']); ?>
 											</span>
@@ -1085,7 +1085,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 									</div>
 								</div>
 
-								<div class="bank-transfer-info account-info">
+								<div class="rt-bank-transfer-info account-info">
 									<div class="add-blog title-priority">
 										<div class="account-input account-name">
 											<label><?php esc_html_e('Account name (only you see this)', 'rt-bank-transfer-checkout'); ?></label>
@@ -1122,7 +1122,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 										</div>
 									</div>
 
-									<div class="add-blog bank-transfer-production-keys">
+									<div class="add-blog rt-bank-transfer-production-keys">
 										<div class="account-input">
 											<label><?php esc_html_e('Live keys (for real payments)', 'rt-bank-transfer-checkout'); ?></label>
 											<input type="text" class="live-public-key" name="accounts[<?php echo esc_attr($index); ?>][live_public_key]" placeholder="<?php esc_attr_e('Publishable key', 'rt-bank-transfer-checkout'); ?>" value="<?php echo esc_attr($account['live_public_key'] ?? ''); ?>">
@@ -1140,16 +1140,16 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 									<div class="account-checkbox">
 										<?php
-										$checkbox_id    = 'bank-transfer-sandbox-checkbox-' . $index;
-										$checkbox_class = 'bank-transfer-sandbox-checkbox';
+										$checkbox_id    = 'rt-bank-transfer-sandbox-checkbox-' . $index;
+										$checkbox_class = 'rt-bank-transfer-sandbox-checkbox';
 										?>
 										<input type="checkbox" class="<?php echo esc_attr($checkbox_class); ?>" id="<?php echo esc_attr($checkbox_id); ?>" name="accounts[<?php echo esc_attr($index); ?>][has_sandbox]" <?php checked(($account['has_sandbox'] ?? '') === 'on'); ?>>
 										<label for="<?php echo esc_attr($checkbox_id); ?>"><?php esc_html_e('I have sandbox (test) keys', 'rt-bank-transfer-checkout'); ?></label>
 									</div>
 
 									<?php
-									$sandbox_container_id    = 'bank-transfer-sandbox-keys-' . $index;
-									$sandbox_container_class = 'bank-transfer-sandbox-keys';
+									$sandbox_container_id    = 'rt-bank-transfer-sandbox-keys-' . $index;
+									$sandbox_container_class = 'rt-bank-transfer-sandbox-keys';
 									$sandbox_display_style   = ($account['has_sandbox'] ?? '') === 'on' ? '' : 'display: none;';
 									?>
 									<div id="<?php echo esc_attr($sandbox_container_id); ?>" class="<?php echo esc_attr($sandbox_container_class); ?>" style="<?php echo esc_attr($sandbox_display_style); ?>">
@@ -1173,9 +1173,9 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 							</div>
 						<?php endforeach; ?>
 					<?php endif; ?>
-					<?php wp_nonce_field('bank_transfer_accounts_nonce_action', 'bank_transfer_accounts_nonce'); ?>
+					<?php wp_nonce_field('rtbtch_accounts_nonce_action', 'rtbtch_accounts_nonce'); ?>
 					<div class="add-account-btn">
-						<button type="button" class="button bank-transfer-add-account">
+						<button type="button" class="button rt-bank-transfer-add-account">
 							<span>+</span> <?php esc_html_e('Add account', 'rt-bank-transfer-checkout'); ?>
 						</button>
 					</div>
@@ -1196,7 +1196,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	 */
 	public function process_payment($order_id)
 	{
-		$result = $this->bank_transfer_do_process_payment($order_id);
+		$result = $this->rtbtch_do_process_payment($order_id);
 
 		if (($result['result'] ?? '') !== 'success' && $this->is_store_api_request()) {
 			throw new \Exception(esc_html($result['message'] ?: __('We could not start your bank payment. You have not been charged. Please try again in a moment, or choose another payment method.', 'rt-bank-transfer-checkout')));
@@ -1205,7 +1205,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		return $result;
 	}
 
-	private function bank_transfer_do_process_payment($order_id)
+	private function rtbtch_do_process_payment($order_id)
 	{
 		global $wpdb;
 
@@ -1217,7 +1217,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		$plugin_version = $this->get_plugin_version();
 
-		Bank_Transfer_Payment_Gateway_Logger::info(
+		RTBTCH_Logger::info(
 			$log_prefix . ' Payment process started',
 			[
 				'order_id'       => $order_id,
@@ -1248,7 +1248,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			);
 		}
 
-		if (!bank_transfer_is_gateway_order($order)) {
+		if (!rtbtch_is_gateway_order($order)) {
 			if (is_checkout()) {
 				wc_add_notice(__('Bank transfer cannot be used for this order. Please choose another payment method.', 'rt-bank-transfer-checkout'), 'error');
 			}
@@ -1264,12 +1264,12 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		$plugin_version = $this->get_plugin_version();
 		if (!empty($plugin_version)) {
-			$order->update_meta_data('_bank_transfer_plugin_version', sanitize_text_field($plugin_version));
-			$order->update_meta_data('bank_transfer_plugin_version', sanitize_text_field($plugin_version));
+			$order->update_meta_data('_rtbtch_plugin_version', sanitize_text_field($plugin_version));
+			$order->update_meta_data('rtbtch_plugin_version', sanitize_text_field($plugin_version));
 			$order->save();
 		}
 
-		Bank_Transfer_Payment_Gateway_Logger::info(
+		RTBTCH_Logger::info(
 			"Payment initiated",
 			[
 				'order_id' => $order_id,
@@ -1277,7 +1277,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			]
 		);
 
-		$lock_name = 'bank_transfer_order_' . $order_id;
+		$lock_name = 'rtbtch_order_' . $order_id;
 
 		// Try lock
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
@@ -1300,11 +1300,11 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			// -------------------------------------------------
 			// 4. RATE LIMITING (BK-17: per session, not per shared IP)
 			// -------------------------------------------------
-			$subject      = bank_transfer_rate_limit_subject();
+			$subject      = rtbtch_rate_limit_subject();
 			$window_size  = 10;
 			$max_requests = 5;
 
-			$timestamp_key = 'bt_rl_pay_' . md5($subject);
+			$timestamp_key = 'rtbtch_rl_pay_' . md5($subject);
 			$timestamps    = get_transient($timestamp_key) ?: [];
 			$current_time  = time();
 
@@ -1312,10 +1312,10 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			if (count($timestamps) >= $max_requests) {
 
-				Bank_Transfer_Payment_Gateway_Logger::warning(
+				RTBTCH_Logger::warning(
 					$log_prefix . ' Rate limit exceeded',
 					[
-						'subject' => strpos($subject, 'ip:') === 0 ? bank_transfer_anonymize_ip(substr($subject, 3)) : 'session',
+						'subject' => strpos($subject, 'ip:') === 0 ? rtbtch_anonymize_ip(substr($subject, 3)) : 'session',
 					]
 				);
 
@@ -1357,7 +1357,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				);
 			}
 
-			if ($status === BANK_TRANSFER_RETURNED_STATUS) {
+			if ($status === RTBTCH_RETURNED_STATUS) {
 				return $this->build_response(
 					'failure',
 					__('Your bank sent back the payment for this order. Please contact the shop to arrange payment.', 'rt-bank-transfer-checkout'),
@@ -1373,8 +1373,8 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			// would let them pay twice. Refresh from RT first in case the
 			// in-flight state is stale.
 			// -------------------------------------------------
-			if (BANK_TRANSFER_PAYMENT_ENGINE::is_in_flight($order) && class_exists('BANK_TRANSFER_PAYMENT_GATEWAY_Loader')) {
-				$live = BANK_TRANSFER_PAYMENT_GATEWAY_Loader::get_instance()->sync_single_order_status($order);
+			if (RTBTCH_State_Engine::is_in_flight($order) && class_exists('RTBTCH_GATEWAY_Loader')) {
+				$live = RTBTCH_GATEWAY_Loader::get_instance()->sync_single_order_status($order);
 				$order = wc_get_order($order_id);
 
 				if ($live === 'success' || $order->has_status(['processing', 'completed'])) {
@@ -1392,7 +1392,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					);
 				}
 
-				if ($live === 'processing' || BANK_TRANSFER_PAYMENT_ENGINE::is_in_flight($order)) {
+				if ($live === 'processing' || RTBTCH_State_Engine::is_in_flight($order)) {
 					$message = __('A bank transfer for this order is already on its way. It takes 1 to 5 business days. Please do not pay again, so you are not charged twice.', 'rt-bank-transfer-checkout');
 					if (is_checkout()) {
 						wc_add_notice($message, 'error');
@@ -1411,9 +1411,9 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			// 6. SANDBOX FLAG (UNCHANGED)
 			// -------------------------------------------------
 			if ($this->sandbox) {
-				if (!$order->get_meta('_is_test_order')) {
-					$order->update_meta_data('_is_test_order', true);
-					bank_transfer_add_unique_order_note(
+				if (!$order->get_meta('_rtbtch_is_test_order')) {
+					$order->update_meta_data('_rtbtch_is_test_order', true);
+					rtbtch_add_unique_order_note(
 						$order,
 						'sandbox_mode',
 						__('This is a test order. No real money moves.', 'rt-bank-transfer-checkout')
@@ -1453,11 +1453,11 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				: $account['live_secret_key'];
 
 			// Prepare payment data
-			$data = $this->bank_transfer_prepare_payment_data($order, $public_key);
+			$data = $this->rtbtch_prepare_payment_data($order, $public_key);
 
 			if (is_array($data) && ($data['result'] ?? '') === 'failure') {
 
-				Bank_Transfer_Payment_Gateway_Logger::warning(
+				RTBTCH_Logger::warning(
 					$log_prefix . ' Account preparation failed',
 					[
 						'account_title' => $account['title'] ?? null,
@@ -1485,13 +1485,13 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				'method'    => 'POST',
 				'timeout'   => 5,
 				'body'      => $limit_body,
-				'headers'   => bank_transfer_signed_headers($public_key, $secret_key, $limit_body),
+				'headers'   => rtbtch_signed_headers($public_key, $secret_key, $limit_body),
 				'sslverify' => true,
 			]);
 
 			if (is_wp_error($limit_resp)) {
 
-				Bank_Transfer_Payment_Gateway_Logger::warning(
+				RTBTCH_Logger::warning(
 					$log_prefix . ' Daily limit API WP error',
 					[
 						'account_title' => $account['title'] ?? null,
@@ -1512,7 +1512,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			if ($limit_code < 200 || $limit_code >= 300 || ($limit_data['status'] ?? '') === 'error') {
 
-				Bank_Transfer_Payment_Gateway_Logger::warning(
+				RTBTCH_Logger::warning(
 					$log_prefix . ' Account rejected by daily limit API',
 					[
 						'account_title' => $account['title'] ?? null,
@@ -1533,7 +1533,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			}
 
 			// ✅ SUCCESS
-			Bank_Transfer_Payment_Gateway_Logger::info(
+			RTBTCH_Logger::info(
 				$log_prefix . ' Account selected',
 				[
 					'account_title' => $account['title'] ?? null,
@@ -1561,7 +1561,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 						);
 					}
 
-					$order->update_meta_data('_bank_transfer_limit_exceeded', true);
+					$order->update_meta_data('_rtbtch_limit_exceeded', true);
 					$order->save();
 
 					return $this->build_response(
@@ -1573,7 +1573,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					);
 				}
 
-				Bank_Transfer_Payment_Gateway_Logger::error(
+				RTBTCH_Logger::error(
 					'No eligible payment provider available for this order.',
 					[
 						'order_id' => $order_id ?? null
@@ -1607,7 +1607,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					'method'    => 'POST',
 					'timeout'   => 30,
 					'body'      => $raw_body,
-					'headers'   => bank_transfer_signed_headers($public_key, $secret_key, $raw_body, 'application/x-www-form-urlencoded'),
+					'headers'   => rtbtch_signed_headers($public_key, $secret_key, $raw_body, 'application/x-www-form-urlencoded'),
 					'sslverify' => true,
 				]);
 
@@ -1626,7 +1626,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				$resp_body = wp_remote_retrieve_body($response);
 				$resp_data = json_decode($resp_body, true);
 
-				Bank_Transfer_Payment_Gateway_Logger::info(
+				RTBTCH_Logger::info(
 					'Payment API response received',
 					[
 						'order_id'  => $order_id,
@@ -1664,7 +1664,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 						? $error_msg
 						: __('Bank transfer is not available right now. You have not been charged. Please choose another payment method, or contact the shop.', 'rt-bank-transfer-checkout');
 
-					Bank_Transfer_Payment_Gateway_Logger::error(
+					RTBTCH_Logger::error(
 						$log_prefix . ' Payment API request failed',
 						[
 							'order_id'  => $order_id,
@@ -1691,7 +1691,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 				if (empty($payment_link)) {
 
-					Bank_Transfer_Payment_Gateway_Logger::error(
+					RTBTCH_Logger::error(
 						'Missing payment link in response',
 						[
 							'order_id' => $order_id,
@@ -1711,7 +1711,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				// -------------------------------------------------
 				// 9. DATABASE: one row per issued link (BK-04 history, BK-12 own table)
 				// -------------------------------------------------
-				$table_name = esc_sql(bank_transfer_table_name());
+				$table_name = esc_sql(rtbtch_table_name());
 
 				// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 				$latest = $wpdb->get_row($wpdb->prepare(
@@ -1737,15 +1737,15 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 				// BT-22: Invalidate cached payment row and uuid
-				wp_cache_delete('bank_transfer_payment_row_' . intval($order_id), 'bank_transfer_payment_gateway');
-				wp_cache_delete('bank_transfer_payment_link_uuid_' . intval($order_id), 'bank_transfer_payment_gateway');
+				wp_cache_delete('rtbtch_payment_row_' . intval($order_id), 'rtbtch_payment_gateway');
+				wp_cache_delete('rtbtch_payment_link_uuid_' . intval($order_id), 'rtbtch_payment_gateway');
 
 				// -------------------------------------------------
 				// 10. PAY ID UPDATE (every id the order was ever issued is kept, BK-04)
 				// -------------------------------------------------
 				if (!empty($pay_id)) {
 
-					$history = $order->get_meta('_bank_transfer_pay_id_history');
+					$history = $order->get_meta('_rtbtch_pay_id_history');
 					$history = is_array($history) ? $history : [];
 					$known   = array_map(static function ($entry) {
 						return (string) (is_array($entry) ? ($entry['pay_id'] ?? '') : $entry);
@@ -1756,22 +1756,22 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 							'public_key' => sanitize_text_field($public_key),
 							'created_at' => current_time('mysql', 1),
 						];
-						$order->update_meta_data('_bank_transfer_pay_id_history', $history);
+						$order->update_meta_data('_rtbtch_pay_id_history', $history);
 					}
 
-					$order->update_meta_data('_bank_transfer_pay_id', $pay_id);
-					$order->update_meta_data('_bank_transfer_pay_id_updated_at', time());
+					$order->update_meta_data('_rtbtch_pay_id', $pay_id);
+					$order->update_meta_data('_rtbtch_pay_id_updated_at', time());
 
-					$order->update_meta_data('_bank_transfer_active_pay_id', $pay_id);
-					$order->update_meta_data('_bank_transfer_payment_finalized', false);
-					$order->update_meta_data('_bank_transfer_public_key', sanitize_text_field($public_key));
+					$order->update_meta_data('_rtbtch_active_pay_id', $pay_id);
+					$order->update_meta_data('_rtbtch_payment_finalized', false);
+					$order->update_meta_data('_rtbtch_public_key', sanitize_text_field($public_key));
 
 					// A new link starts a new payment cycle. A state closed by an
 					// earlier link (failed / cancelled / expired) must not block the
 					// RT backend webhook for this one; a paid order never gets here.
-					$previous_state = $order->get_meta('_bank_transfer_state');
+					$previous_state = $order->get_meta('_rtbtch_state');
 					if (in_array($previous_state, ['failed', 'cancelled', 'expired'], true)) {
-						$order->update_meta_data('_bank_transfer_state', 'pending');
+						$order->update_meta_data('_rtbtch_state', 'pending');
 					}
 					$order->save();
 				}
@@ -1784,7 +1784,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				// (BK-03: then on-hold) or settled (then processing/completed).
 				$order->update_status('pending', __('Waiting for the customer to approve the bank transfer on RT\'s page.', 'rt-bank-transfer-checkout'));
 
-				bank_transfer_add_unique_order_note(
+				rtbtch_add_unique_order_note(
 					$order,
 					'payment_initiated',
 					sprintf(
@@ -1794,7 +1794,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					)
 				);
 
-				Bank_Transfer_Payment_Gateway_Logger::info(
+				RTBTCH_Logger::info(
 					$log_prefix . ' Payment initiated successfully',
 					[
 						'order_id'    => $order_id,
@@ -1810,7 +1810,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 						'payment_status' => $resp_data['data']['payment_status'] ?? 'pending',
 						'redirect'       => esc_url($payment_link),
 						'order_key'      => $order->get_order_key(),
-						'bank_transfer_nonce'  => wp_create_nonce('bank_transfer_payment'),
+						'rtbtch_nonce'  => wp_create_nonce('rtbtch_payment'),
 					],
 					200,
 					$order_id
@@ -1818,7 +1818,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			} catch (\Exception $e) {
 
-				Bank_Transfer_Payment_Gateway_Logger::error(
+				RTBTCH_Logger::error(
 					"Payment processing exception: " . $e->getMessage(),
 					[
 						'order_id' => $order_id ?? null,
@@ -1853,29 +1853,29 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			'redirect'            => (string) ($data['redirect'] ?? ''),
 			'order_id'            => $order_id,
 			'order_key'           => (string) ($data['order_key'] ?? ''),
-			'bank_transfer_nonce' => (string) ($data['bank_transfer_nonce'] ?? ''),
+			'rtbtch_nonce' => (string) ($data['rtbtch_nonce'] ?? ''),
 			'code'                => $code,
 			'success'             => $result === 'success',
 		];
 	}
 
-	public function bank_transfer_display_test_order_tag($order) {
-		if ($order instanceof WC_Order && $order->get_meta('_is_test_order')) {
+	public function rtbtch_display_test_order_tag($order) {
+		if ($order instanceof WC_Order && $order->get_meta('_rtbtch_is_test_order')) {
 			echo '<p class="form-field form-field-wide"><strong>' . esc_html__('Test order: no real money was received.', 'rt-bank-transfer-checkout') . '</strong></p>';
 		}
 		// Refunds are made in RT by design; say so where the shop owner looks for the button.
-		if ($order instanceof WC_Order && bank_transfer_is_gateway_order($order)) {
+		if ($order instanceof WC_Order && rtbtch_is_gateway_order($order)) {
 			echo '<p class="form-field form-field-wide"><strong>' . esc_html__('Refunds:', 'rt-bank-transfer-checkout') . '</strong> ' .
 				esc_html__('to refund this bank payment, open it in your RT account and refund it there. The Refund button here only records a refund in WooCommerce; it does not send money back.', 'rt-bank-transfer-checkout') . '</p>';
 		}
 	}
 
-	private function bank_transfer_get_return_url_base() {
-		if (defined('BANK_TRANSFER_WEBHOOK_URL') && !empty(BANK_TRANSFER_WEBHOOK_URL)) {
-			return BANK_TRANSFER_WEBHOOK_URL;
+	private function rtbtch_get_return_url_base() {
+		if (defined('RTBTCH_WEBHOOK_URL') && !empty(RTBTCH_WEBHOOK_URL)) {
+			return RTBTCH_WEBHOOK_URL;
 		}
-		$url = rest_url('/' . BANK_TRANSFER_REST_NAMESPACE . '/data');
-		return apply_filters('bank_transfer_webhook_url', $url);
+		$url = rest_url('/' . RTBTCH_REST_NAMESPACE . '/data');
+		return apply_filters('rtbtch_webhook_url', $url);
 	}
 
 	private function is_po_box($address) {
@@ -1886,7 +1886,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		return preg_match('/pob|postoffice/', $clean) === 1;
 	}
 
-	private function bank_transfer_prepare_payment_data($order, $api_public_key) {
+	private function rtbtch_prepare_payment_data($order, $api_public_key) {
 		$order_id    = $order->get_id();
 		$is_sandbox  = $this->get_option('sandbox') === 'yes';
 		$request_for = sanitize_email($order->get_billing_email() ?: $order->get_billing_phone());
@@ -1910,12 +1910,12 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			'order_id' => $order_id,
 			'key'      => $order->get_order_key(),
 			'mode'     => 'wp',
-		], $this->bank_transfer_get_return_url_base()));
+		], $this->rtbtch_get_return_url_base()));
 
-		$ip_address = sanitize_text_field($this->bank_transfer_get_client_ip());
+		$ip_address = sanitize_text_field($this->rtbtch_get_client_ip());
 
 		if (empty($order_id)) {
-			Bank_Transfer_Payment_Gateway_Logger::error(
+			RTBTCH_Logger::error(
 				'Order ID is missing or invalid.',
 				[]
 			);
@@ -1968,7 +1968,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		];
 	}
 
-	private function bank_transfer_normalize_phone($phone, $country_code) {
+	private function rtbtch_normalize_phone($phone, $country_code) {
 		$cleanedPhone  = preg_replace('/[()\s-]/', '', $phone ?? '');
 		$countryCode   = preg_replace('/[^0-9]/', '', $country_code ?? '');
 		$phoneNumber   = preg_replace('/[^\d]/', '', $cleanedPhone);
@@ -2020,7 +2020,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		return ['phone' => $normalizedPhone, 'country_code' => '+' . $countryCode, 'is_valid' => true, 'error' => null];
 	}
 
-	private function bank_transfer_get_client_ip() {
+	private function rtbtch_get_client_ip() {
 		if (class_exists('WC_Geolocation')) {
 			return WC_Geolocation::get_ip_address();
 		}
@@ -2028,7 +2028,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		return filter_var($ip, FILTER_VALIDATE_IP) ? $ip : '0.0.0.0';
 	}
 
-	public function bank_transfer_add_custom_label_to_order_row($line_items, $order) {
+	public function rtbtch_add_custom_label_to_order_row($line_items, $order) {
 		$order_origin = $order->get_meta('_order_origin');
 		if (!empty($order_origin)) {
 			$line_items[0]['name'] .= ' <span style="background-color: #ffeb3b; color: #000; padding: 3px 5px; border-radius: 3px; font-size: 12px;">' . esc_html($order_origin) . '</span>';
@@ -2036,7 +2036,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		return $line_items;
 	}
 
-	public function bank_transfer_woocommerce_not_active_notice() {
+	public function rtbtch_woocommerce_not_active_notice() {
 		echo '<div class="error"><p>' . esc_html__('RT Bank Transfer needs WooCommerce. Install and activate WooCommerce first.', 'rt-bank-transfer-checkout') . '</p></div>';
 	}
 
@@ -2058,23 +2058,23 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 		if ('yes' === $this->get_option('show_consent_checkbox')) {
 			echo '<p class="form-row form-row-wide">
-                <label for="bank_transfer_consent">
-                    <input type="checkbox" id="bank_transfer_consent" name="bank_transfer_consent" /> ' .
+                <label for="rtbtch_consent">
+                    <input type="checkbox" id="rtbtch_consent" name="rtbtch_consent" /> ' .
 				esc_html__('I consent to the collection of my data to process this payment', 'rt-bank-transfer-checkout') .
 				'</label></p>';
-			wp_nonce_field('bank_transfer_payment', 'bank_transfer_nonce');
+			wp_nonce_field('rtbtch_payment', 'rtbtch_nonce');
 		}
 	}
 
 	public function validate_fields() {
 
 		if ($this->get_option('show_consent_checkbox') === 'yes') {
-			$nonce = isset($_POST['bank_transfer_nonce']) ? sanitize_text_field(wp_unslash($_POST['bank_transfer_nonce'])) : '';
-			if (empty($nonce) || !wp_verify_nonce($nonce, 'bank_transfer_payment')) {
+			$nonce = isset($_POST['rtbtch_nonce']) ? sanitize_text_field(wp_unslash($_POST['rtbtch_nonce'])) : '';
+			if (empty($nonce) || !wp_verify_nonce($nonce, 'rtbtch_payment')) {
 				wc_add_notice(__('This page was open for too long. Please refresh it and try again.', 'rt-bank-transfer-checkout'), 'error');
 				return false;
 			}
-			$consent = isset($_POST['bank_transfer_consent']) ? sanitize_text_field(wp_unslash($_POST['bank_transfer_consent'])) : '';
+			$consent = isset($_POST['rtbtch_consent']) ? sanitize_text_field(wp_unslash($_POST['rtbtch_consent'])) : '';
 			if ($consent !== 'on') {
 				wc_add_notice(__('Please tick the consent box to pay by bank transfer.', 'rt-bank-transfer-checkout'), 'error');
 				return false;
@@ -2083,39 +2083,39 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		return true;
 	}
 
-	public function bank_transfer_enqueue_styles_and_scripts() {
+	public function rtbtch_enqueue_styles_and_scripts() {
 		if (is_checkout()) {
 			$image_url = plugin_dir_url(dirname(__FILE__)) . 'assets/images/loader.gif';
-			wp_enqueue_style('bank-transfer-payment-loader-styles', plugins_url('../assets/css/frontend.css', __FILE__), [], '1.0', 'all');
-			wp_enqueue_script('bank-transfer-js', plugins_url('../assets/js/bank-transfer.js', __FILE__), ['jquery'], filemtime(plugin_dir_path(__FILE__) . '../assets/js/bank-transfer.js'), true);
-			wp_localize_script('bank-transfer-js', 'bank_transfer_params', [
+			wp_enqueue_style('rt-bank-transfer-payment-loader-styles', plugins_url('../assets/css/rt-bank-transfer-frontend.css', __FILE__), [], '1.0', 'all');
+			wp_enqueue_script('rt-bank-transfer-js', plugins_url('../assets/js/rt-bank-transfer.js', __FILE__), ['jquery'], filemtime(plugin_dir_path(__FILE__) . '../assets/js/rt-bank-transfer.js'), true);
+			wp_localize_script('rt-bank-transfer-js', 'rtbtch_params', [
 				'ajax_url'       => admin_url('admin-ajax.php'),
 				'checkout_url'   => wc_get_checkout_url(),
-				'bank_transfer_loader' => $image_url,
-				'bank_transfer_nonce'  => wp_create_nonce('bank_transfer_payment'),
+				'rtbtch_loader' => $image_url,
+				'rtbtch_nonce'  => wp_create_nonce('rtbtch_payment'),
 				'payment_method'       => $this->id,
 				'plugin_version'       => $this->get_plugin_version(),
 			]);
 		}
 	}
 
-	function bank_transfer_admin_scripts($hook) {
+	function rtbtch_admin_scripts($hook) {
 		if (
 			'woocommerce_page_wc-settings' !== $hook ||
 			(sanitize_text_field(wp_unslash($_GET['section'] ?? '')) !== $this->id) // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		) {
 			return;
 		}
-		wp_enqueue_style('bank-transfer-font-awesome', plugins_url('../assets/css/font-awesome.css', __FILE__), [], filemtime(plugin_dir_path(__FILE__) . '../assets/css/font-awesome.css'), 'all');
-		wp_enqueue_style('bank-transfer-admin-css', plugins_url('../assets/css/admin.css', __FILE__), [], filemtime(plugin_dir_path(__FILE__) . '../assets/css/admin.css'), 'all');
-		wp_enqueue_script('bank-transfer-admin-script', plugins_url('../assets/js/bank-transfer-admin.js', __FILE__), ['jquery'], filemtime(plugin_dir_path(__FILE__) . '../assets/js/bank-transfer-admin.js'), true);
+		wp_enqueue_style('rt-bank-transfer-font-awesome', plugins_url('../assets/css/rt-bank-transfer-font-awesome.css', __FILE__), [], filemtime(plugin_dir_path(__FILE__) . '../assets/css/rt-bank-transfer-font-awesome.css'), 'all');
+		wp_enqueue_style('rt-bank-transfer-admin-css', plugins_url('../assets/css/rt-bank-transfer-admin.css', __FILE__), [], filemtime(plugin_dir_path(__FILE__) . '../assets/css/rt-bank-transfer-admin.css'), 'all');
+		wp_enqueue_script('rt-bank-transfer-admin-script', plugins_url('../assets/js/rt-bank-transfer-admin.js', __FILE__), ['jquery'], filemtime(plugin_dir_path(__FILE__) . '../assets/js/rt-bank-transfer-admin.js'), true);
 		$status_texts = [];
-		foreach (bank_transfer_account_status_texts() as $status_key => $status_text) {
+		foreach (rtbtch_account_status_texts() as $status_key => $status_text) {
 			$status_texts[$status_key] = ['label' => $status_text[0], 'help' => $status_text[1]];
 		}
-		wp_localize_script('bank-transfer-admin-script', 'bank_transfer_admin_data', [
+		wp_localize_script('rt-bank-transfer-admin-script', 'rtbtch_admin_data', [
 			'ajax_url'    => admin_url('admin-ajax.php'),
-			'nonce'       => wp_create_nonce('bank_transfer_sync_nonce'),
+			'nonce'       => wp_create_nonce('rtbtch_sync_nonce'),
 			'gateway_id'  => $this->id,
 			'sync_action' => $this->id . '_manual_sync',
 			'statuses'    => $status_texts,
@@ -2160,7 +2160,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		]);
 	}
 
-	public function bank_transfer_hide_custom_payment_gateway_conditionally($available_gateways)
+	public function rtbtch_hide_custom_payment_gateway_conditionally($available_gateways)
 	{
 		$gateway_id = $this->id;
 		$this->selected_account_for_display = null;
@@ -2250,7 +2250,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		// =====================================================
 		if (empty($accounts)) {
 
-			Bank_Transfer_Payment_Gateway_Logger::info(
+			RTBTCH_Logger::info(
 				"Bank Transfer Gateway Decision",
 				[
 					'result' => 'HIDDEN',
@@ -2298,7 +2298,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		// =====================================================
 		// STEP 10: SINGLE FINAL LOG ONLY
 		// =====================================================
-		Bank_Transfer_Payment_Gateway_Logger::info(
+		RTBTCH_Logger::info(
 			"Bank Transfer Gateway Decision",
 			[
 				'result' => $selected ? 'SHOWN' : 'HIDDEN',
@@ -2362,7 +2362,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$response = wp_remote_post($url, [
 			'method'    => 'POST',
 			'timeout'   => 5,
-			'headers'   => bank_transfer_signed_headers($data['api_public_key'] ?? '', $secret_key, $raw_body),
+			'headers'   => rtbtch_signed_headers($data['api_public_key'] ?? '', $secret_key, $raw_body),
 			'body'      => $raw_body,
 			'sslverify' => true,
 		]);
@@ -2377,7 +2377,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	}
 
 	private function get_all_accounts() {
-		$accounts = bank_transfer_get_accounts();
+		$accounts = rtbtch_get_accounts();
 		$valid_accounts = [];
 		foreach ($accounts as $i => $account) {
 			if ($this->sandbox) {
@@ -2476,7 +2476,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				'amount'         => $amount,
 				'api_public_key' => $public_key,
 			];
-			$cache_base  = 'bank_transfer_daily_limit_' . md5($public_key . '_' . $amount);
+			$cache_base  = 'rtbtch_daily_limit_' . md5($public_key . '_' . $amount);
 			$limit_data  = $this->get_cached_api_response($transactionLimitApiUrl, $data, $cache_base . '_limit', 300, $force_refresh, $secret_key);
 
 			if (!empty($limit_data) && ($limit_data['status'] ?? '') === 'success') {

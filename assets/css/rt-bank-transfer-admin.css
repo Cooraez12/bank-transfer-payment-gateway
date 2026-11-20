@@ -1,0 +1,345 @@
+.rtbtch-accounts-container,
+.rt-bank-transfer-accounts-container,
+.rt_bank_transfer-accounts-container {
+	max-width: 600px;
+}
+
+.rtbtch-accounts-container .title-priority,
+.rt-bank-transfer-accounts-container .title-priority,
+.rt_bank_transfer-accounts-container .title-priority {
+	display: flex;
+}
+
+.rtbtch-accounts-container .title-priority .account-name,
+.rt-bank-transfer-accounts-container .title-priority .account-name,
+.rt_bank_transfer-accounts-container .title-priority .account-name {
+	width: 70% !important;
+}
+
+.rtbtch-accounts-container .title-priority .priority-name,
+.rt-bank-transfer-accounts-container .title-priority .priority-name,
+.rt_bank_transfer-accounts-container .title-priority .priority-name {
+	width: 28% !important;
+}
+
+.rtbtch-accounts-container .rotated,
+.rt-bank-transfer-accounts-container .rotated,
+.rt_bank_transfer-accounts-container .rotated {
+	transform: rotate(180deg);
+}
+
+.rtbtch-instructions-url,
+.rtbtch-instructions-url:hover,
+.rt-bank-transfer-instructions-url,
+.rt-bank-transfer-instructions-url:hover,
+.rt_bank_transfer-instructions-url,
+.rt_bank_transfer-instructions-url:hover {
+	color: #8264D7;
+}
+
+.rtbtch-accounts-container .rtbtch-account,
+.rtbtch-accounts-container .rt-bank-transfer-account,
+.rtbtch-accounts-container .rt_bank_transfer-account,
+.rt-bank-transfer-accounts-container .rtbtch-account,
+.rt-bank-transfer-accounts-container .rt-bank-transfer-account,
+.rt-bank-transfer-accounts-container .rt_bank_transfer-account,
+.rt_bank_transfer-accounts-container .rt_bank_transfer-account {
+	margin-bottom: 14px !important;
+	border: 1px solid #C5C5C5;
+	border-radius: 7px;
+	padding: 12px;
+}
+
+.rtbtch-accounts-container .add-blog,
+.rt-bank-transfer-accounts-container .add-blog,
+.rt_bank_transfer-accounts-container .add-blog {
+	align-items: start;
+	flex-wrap: wrap;
+	margin-bottom: 10px;
+	margin-top: 10px;
+	justify-content: space-between;
+}
+
+.rtbtch-accounts-container .account-input input,
+.rtbtch-accounts-container .account-input textarea,
+.rt-bank-transfer-accounts-container .account-input input,
+.rt-bank-transfer-accounts-container .account-input textarea,
+.rt_bank_transfer-accounts-container .account-input input,
+.rt_bank_transfer-accounts-container .account-input textarea {
+	width: 100% !important;
+	margin-bottom: 8px !important;
+	margin-right: 8px !important;
+}
+
+.rtbtch-accounts-container h4,
+.rt-bank-transfer-accounts-container h4,
+.rt_bank_transfer-accounts-container h4 {
+	font-size: 17px !important;
+	margin-top: 0 !important;
+	margin-bottom: 0px !important;
+	display: flex !important;
+	align-items: center !important;
+}
+
+.rtbtch-accounts-container h4 i,
+.rt-bank-transfer-accounts-container h4 i,
+.rt_bank_transfer-accounts-container h4 i {
+	font-size: 13px !important;
+	margin-left: 6px !important;
+	margin-right: 6px !important;
+	cursor: pointer;
+}
+
+.rt-bank-transfer-accounts-container .empty-account{
+	background: #ffffff;
+	padding: 16px;
+	border-left: 3px solid #8264D7;
+	font-size: 15px !important;
+	font-weight: 400;
+	margin-bottom: 20px !important;
+}
+
+.rtbtch-accounts-container .action-button,
+.rt-bank-transfer-accounts-container .action-button,
+.rt_bank_transfer-accounts-container .action-button {
+	display: flex !important;
+	align-items: center !important;
+}
+
+.rtbtch-accounts-container .action-button .account-status-block,
+.rt-bank-transfer-accounts-container .action-button .account-status-block,
+.rt_bank_transfer-accounts-container .action-button .account-status-block {
+	float: none !important;
+	margin-right: 8px;
+}
+
+.rtbtch-accounts-container .action-button button,
+.rt-bank-transfer-accounts-container .action-button button,
+.rt_bank_transfer-accounts-container .action-button button {
+	color: #6B6B6B;
+	font-size: 14px !important;
+	background: transparent;
+	border: none;
+	cursor: pointer;
+}
+
+.rtbtch-accounts-container .active-indicator,
+.rt-bank-transfer-accounts-container .active-indicator,
+.rt_bank_transfer-accounts-container .rt_bank_transfer-account .active-indicator {
+	font-size: 14px !important;
+	color: #28A745 !important;
+	background: #E7F5EB !important;
+	border-radius: 5px;
+	padding: 4px 16px;
+	width: fit-content;
+	margin-right: 8px;
+}
+
+.rtbtch-accounts-container .account-input label,
+.rt-bank-transfer-accounts-container .account-input label,
+.rt_bank_transfer-accounts-container .account-input label {
+	display: block !important;
+	margin-bottom: 5px !important;
+}
+
+.rtbtch-accounts-container .add-account-btn .rtbtch-add-account,
+.rtbtch-accounts-container .add-account-btn .rt-bank-transfer-add-account,
+.rtbtch-accounts-container .add-account-btn .rt_bank_transfer-add-account,
+.rt-bank-transfer-accounts-container .add-account-btn .rtbtch-add-account,
+.rt-bank-transfer-accounts-container .add-account-btn .rt-bank-transfer-add-account,
+.rt-bank-transfer-accounts-container .add-account-btn .rt_bank_transfer-add-account,
+.rt_bank_transfer-accounts-container .add-account-btn .rt_bank_transfer-add-account {
+	border-radius: 5px;
+	background: #0A0B21;
+	color: #F5F5F5;
+	font-size: 15px !important;
+	margin: 5px 0;
+	max-width: 204px !important;
+	width: 100%;
+	padding: 11px !important;
+	border: 1px solid #0A0B21;
+	height: 42px !important;
+	line-height: 19px !important;
+}
+
+.rtbtch-accounts-container .add-account-btn .rtbtch-add-account span,
+.rtbtch-accounts-container .add-account-btn .rt-bank-transfer-add-account span,
+.rtbtch-accounts-container .add-account-btn .rt_bank_transfer-add-account span,
+.rt-bank-transfer-accounts-container .add-account-btn .rtbtch-add-account span,
+.rt-bank-transfer-accounts-container .add-account-btn .rt-bank-transfer-add-account span,
+.rt-bank-transfer-accounts-container .add-account-btn .rt_bank_transfer-add-account span,
+.rt_bank_transfer-accounts-container .add-account-btn .rt_bank_transfer-add-account span {
+	font-size: 19px;
+	line-height: 12px;
+}
+
+.rtbtch-accounts-container .account-info,
+.rtbtch-accounts-container .rtbtch-info,
+.rtbtch-accounts-container .rt-bank-transfer-info,
+.rt-bank-transfer-accounts-container .account-info,
+.rt-bank-transfer-accounts-container .rtbtch-info,
+.rt-bank-transfer-accounts-container .rt-bank-transfer-info,
+.rt_bank_transfer-accounts-container .account-info {
+	display: none;
+	margin-top: 18px !important;
+}
+
+.rtbtch-accounts-container .account-toggle-btn,
+.rtbtch-accounts-container .rtbtch-toggle-btn,
+.rtbtch-accounts-container .rt-bank-transfer-toggle-btn,
+.rt-bank-transfer-accounts-container .account-toggle-btn,
+.rt-bank-transfer-accounts-container .rtbtch-toggle-btn,
+.rt-bank-transfer-accounts-container .rt-bank-transfer-toggle-btn,
+.rtbtch-toggle-btn,
+.rt-bank-transfer-toggle-btn,
+.rt_bank_transfer-accounts-container .account-toggle-btn {
+	color: #6B6B6B;
+	font-size: 17px !important;
+	margin-left: 8px !important;
+}
+
+.rtbtch-accounts-container .account-checkbox,
+.rt-bank-transfer-accounts-container .account-checkbox,
+.rt_bank_transfer-accounts-container .account-checkbox {
+	font-size: 14px !important;
+	display: flex !important;
+	align-items: center !important;
+	margin: 10px 0 15px !important;
+}
+
+.rtbtch-accounts-container .account-checkbox input,
+.rt-bank-transfer-accounts-container .account-checkbox input,
+.rt_bank_transfer-accounts-container .account-checkbox input {
+	width: 15px !important;
+	height: 15px !important;
+	margin-right: 5px !important;
+	margin-left: 0 !important;
+}
+
+.rtbtch-accounts-container .title-blog,
+.rt-bank-transfer-accounts-container .title-blog,
+.rt_bank_transfer-accounts-container .title-blog {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	word-break: break-word;
+}
+
+.rt-bank-transfer-accounts-container .account-status{
+	margin-top: 5px;
+}
+
+.rt-bank-transfer-accounts-container .status-label,
+.rt-bank-transfer-accounts-container .account-status-label{
+	display: inline-block;
+	padding: 3px 8px;
+	border-radius: 4px;
+	font-size: 12px;
+	font-weight: bold;
+	margin-right: 5px;
+	color: #fff;
+}
+
+/* Green only when RT has accepted the keys. */
+.status-label,
+.account-status-label {
+	background-color: #646970;
+}
+
+.rt-bank-transfer-accounts-container .status-label.active,
+.rt-bank-transfer-accounts-container .account-status-label.active{
+	background-color: #1a7f37;
+}
+
+.rt-bank-transfer-accounts-container .account-status-label.pending{
+	background-color: #9a6700;
+}
+
+.rt-bank-transfer-accounts-container .status-label.inactive,
+.rt-bank-transfer-accounts-container .status-label.invalid,
+.rt-bank-transfer-accounts-container .account-status-label.invalid,
+.rt-bank-transfer-accounts-container .account-status-label.not-connected{
+	background-color: #b32d2e;
+}
+
+.rt-bank-transfer-accounts-container .error-message,
+.rt-bank-transfer-gateway-settings-form .error-message {
+	color: #b32d2e;
+	margin-top: 4px;
+}
+
+@media (max-width: 600px) {
+	.rt-bank-transfer-accounts-container .title-blog,
+	.rt-bank-transfer-accounts-container .action-button {
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+	.rt-bank-transfer-accounts-container .account-input,
+	.rt-bank-transfer-accounts-container .account-input input,
+	.rt-bank-transfer-accounts-container .account-input textarea {
+		width: 100%;
+		max-width: 100%;
+		box-sizing: border-box;
+	}
+}
+
+#rtbtch-sync-status,
+#rt-bank-transfer-sync-status,
+#rt_bank_transfer-sync-status {
+	padding-right: 10px;
+}
+
+.rtbtch-sync-account,
+.rt-bank-transfer-sync-account,
+.rt_bank_transfer-sync-account {
+	justify-content: end;
+	align-items: center;
+	display: flex;
+	margin-bottom: 15px !important;
+}
+
+.rtbtch-sync-account button,
+.rt-bank-transfer-sync-account button,
+.rt_bank_transfer-sync-account button {
+	border: 1px solid #8264D7 !important;
+	color: #8264D7 !important;
+	background: #8264D717 !important;
+	border-radius: 4px;
+	padding: 7px 10px;
+	font-size: 14px;
+	font-weight: 500;
+	cursor: pointer;
+}
+
+.rtbtch-sync-account .success,
+.rt-bank-transfer-sync-account .success,
+.rt_bank_transfer-sync-account .success {
+	color: #28A745 !important;
+}
+
+.rtbtch-accounts-container input.error,
+.rt-bank-transfer-accounts-container input.error,
+.rt_bank_transfer-accounts-container input.error {
+	border: 1px solid #dc3545;
+	background-color: #fff0f0;
+	color: #dc3545;
+}
+.rt-bank-transfer-sync-account .error {
+	color: #b32d2e;
+}
+
+
+/* BANK-1020: align saved and newly added account fields at all widths. */
+:is(.rtbtch-accounts-container, .rt-bank-transfer-accounts-container, .rt_bank_transfer-accounts-container) .add-blog { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin: 12px 0; }
+:is(.rtbtch-accounts-container, .rt-bank-transfer-accounts-container, .rt_bank_transfer-accounts-container) .add-blog > .account-input { flex: 1 1 220px; min-width: 0; }
+:is(.rtbtch-accounts-container, .rt-bank-transfer-accounts-container, .rt_bank_transfer-accounts-container) .title-priority .account-name,
+:is(.rtbtch-accounts-container, .rt-bank-transfer-accounts-container, .rt_bank_transfer-accounts-container) .title-priority .priority-name { width: auto !important; }
+:is(.rtbtch-accounts-container, .rt-bank-transfer-accounts-container, .rt_bank_transfer-accounts-container) .title-priority .account-name { flex: 2 1 260px; }
+:is(.rtbtch-accounts-container, .rt-bank-transfer-accounts-container, .rt_bank_transfer-accounts-container) .title-priority .priority-name { flex: 1 1 170px; }
+:is(.rtbtch-accounts-container, .rt-bank-transfer-accounts-container, .rt_bank_transfer-accounts-container) .account-input label { display: block; margin-bottom: 6px; }
+:is(.rtbtch-accounts-container, .rt-bank-transfer-accounts-container, .rt_bank_transfer-accounts-container) .account-input input,
+:is(.rtbtch-accounts-container, .rt-bank-transfer-accounts-container, .rt_bank_transfer-accounts-container) .account-input textarea { box-sizing: border-box; max-width: 100%; margin: 0 !important; }
+:is(.rtbtch-accounts-container, .rt-bank-transfer-accounts-container, .rt_bank_transfer-accounts-container) .secret-key-wrapper { position: relative; display: flex; align-items: center; width: 100%; }
+:is(.rtbtch-accounts-container, .rt-bank-transfer-accounts-container, .rt_bank_transfer-accounts-container) .secret-key-wrapper > input { min-width: 0; padding-right: 44px !important; }
+:is(.rtbtch-accounts-container, .rt-bank-transfer-accounts-container, .rt_bank_transfer-accounts-container) .toggle-secret-visibility { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; border: 0; background: transparent; color: #555; cursor: pointer; }
+:is(.rtbtch-accounts-container, .rt-bank-transfer-accounts-container, .rt_bank_transfer-accounts-container) .toggle-secret-visibility:focus-visible { outline: 2px solid #2271b1; outline-offset: 2px; }

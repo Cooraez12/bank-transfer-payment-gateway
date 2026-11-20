@@ -4,10 +4,10 @@ if (!defined('ABSPATH')) {
 }
 
 require_once plugin_dir_path(__FILE__) . 'config.php';
-require_once plugin_dir_path(__FILE__) . 'bank-transfer-payment-gateway-utils.php';
+require_once plugin_dir_path(__FILE__) . 'rt-bank-transfer-payment-gateway-utils.php';
 require_once plugin_dir_path(__FILE__) . 'class-bank-transfer-payment-state-engine.php';
 
-class BANK_TRANSFER_PAYMENT_GATEWAY_REST_API
+class RTBTCH_GATEWAY_REST_API
 {
 	/** Webhook timestamps older than this are refused (seconds). */
 	const WEBHOOK_MAX_SKEW = 300;
@@ -20,7 +20,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_REST_API
 	 * new payment links are issued with (BK-13); the others are the pre-1.0.2
 	 * names kept so links already handed to RT keep working.
 	 */
-	const NAMESPACES = [BANK_TRANSFER_REST_NAMESPACE, 'bank-transfer/v1', 'bank_transfer/v1'];
+	const NAMESPACES = [RTBTCH_REST_NAMESPACE, 'rt-bank-transfer/v1', 'bank_transfer/v1'];
 
 	private $logger;
 	private static $instance = null;
@@ -40,12 +40,12 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_REST_API
 
 		// BT-13: Only add CORS headers for this plugin's routes without breaking global WordPress REST handling.
 		// Match strictly on the resolved REST route, anchored to our namespaces. Never fall back to REQUEST_URI:
-		// a substring match on it lets /wp-json/anything?x=bank-transfer/v1 receive our headers and the OPTIONS exit.
+		// a substring match on it lets /wp-json/anything?x=rt-bank-transfer/v1 receive our headers and the OPTIONS exit.
 		add_filter('rest_pre_serve_request', function ($value, $result, $request) {
 			$route = ($request instanceof WP_REST_Request) ? (string) $request->get_route() : '';
 
 			if ($route !== '' && preg_match('#^/(rt-bank-transfer|bank[-_]transfer)/v1(?:/|$)#', $route)) {
-				header('Access-Control-Allow-Origin: ' . BANK_TRANSFER_BASE_URL);
+				header('Access-Control-Allow-Origin: ' . RTBTCH_BASE_URL);
 				header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 				header('Access-Control-Allow-Headers: Authorization, Content-Type, X-WP-Nonce, X-Signature, X-Timestamp, User-Agent, Accept');
 
@@ -62,13 +62,13 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_REST_API
 		}, 15, 3);
 	}
 
-	public function bank_transfer_register_routes()
+	public function rtbtch_register_routes()
 	{
 		add_action('rest_api_init', function () {
 			foreach (self::NAMESPACES as $namespace) {
 				register_rest_route($namespace, '/data', array(
 					'methods'             => ['GET', 'POST'],
-					'callback'            => array($this, 'bank_transfer_handle_api_request'),
+					'callback'            => array($this, 'rtbtch_handle_api_request'),
 					'permission_callback' => '__return_true',
 				));
 			}
@@ -84,16 +84,16 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_REST_API
 	 *
 	 * @return true|WP_Error
 	 */
-	private function bank_transfer_verify_webhook(WP_REST_Request $request, $order, $pay_id = '')
+	private function rtbtch_verify_webhook(WP_REST_Request $request, $order, $pay_id = '')
 	{
 		if (!$order || !is_a($order, 'WC_Order')) {
 			return new WP_Error('no_order', 'Authentication failed.');
 		}
 
 		// BANK-05: the account that raised the link this webhook is about.
-		$account = bank_transfer_get_webhook_account($order, $pay_id);
+		$account = rtbtch_get_webhook_account($order, $pay_id);
 		if ($account === null || empty($account['secret_key'])) {
-			Bank_Transfer_Payment_Gateway_Logger::warning('Webhook rejected: no configured account matches the order public key', ['order_id' => $order->get_id()]);
+			RTBTCH_Logger::warning('Webhook rejected: no configured account matches the order public key', ['order_id' => $order->get_id()]);
 			return new WP_Error('no_account', 'Authentication failed.');
 		}
 
@@ -106,33 +106,33 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_REST_API
 		$timestamp_header = trim((string) $request->get_header('x-timestamp'));
 
 		if ($sig_header === '' || $timestamp_header === '') {
-			Bank_Transfer_Payment_Gateway_Logger::warning('Webhook rejected: X-Signature / X-Timestamp headers required', ['order_id' => $order->get_id()]);
+			RTBTCH_Logger::warning('Webhook rejected: X-Signature / X-Timestamp headers required', ['order_id' => $order->get_id()]);
 			return new WP_Error('signature_required', 'Authentication failed.');
 		}
 
 		// X-Timestamp must be a strict unsigned digit string (rejects "123abc", signs, floats, exponents).
 		if (!ctype_digit($timestamp_header) || strlen($timestamp_header) > 12) {
-			Bank_Transfer_Payment_Gateway_Logger::warning('Webhook timestamp malformed');
+			RTBTCH_Logger::warning('Webhook timestamp malformed');
 			return new WP_Error('timestamp_malformed', 'Authentication failed.');
 		}
 
 		$timestamp_int = (int) $timestamp_header;
 		if (abs(time() - $timestamp_int) > self::WEBHOOK_MAX_SKEW) {
-			Bank_Transfer_Payment_Gateway_Logger::warning('Webhook timestamp expired', ['timestamp' => $timestamp_int]);
+			RTBTCH_Logger::warning('Webhook timestamp expired', ['timestamp' => $timestamp_int]);
 			return new WP_Error('timestamp_expired', 'Authentication failed.');
 		}
 
 		$raw_body     = $request->get_body();
 		$expected_sig = hash_hmac('sha256', $timestamp_header . '.' . $raw_body, $secret);
 		if (!hash_equals($expected_sig, strtolower($sig_header))) {
-			Bank_Transfer_Payment_Gateway_Logger::warning('Webhook HMAC signature mismatch', ['order_id' => $order->get_id()]);
+			RTBTCH_Logger::warning('Webhook HMAC signature mismatch', ['order_id' => $order->get_id()]);
 			return new WP_Error('signature_mismatch', 'Authentication failed.');
 		}
 
 		// Replay store: the same signature is only ever accepted once.
 		$replay_key = 'bt_wh_' . substr(hash('sha256', $order->get_id() . '|' . $sig_header), 0, 40);
 		if (get_transient($replay_key) !== false) {
-			Bank_Transfer_Payment_Gateway_Logger::warning('Webhook replay ignored', ['order_id' => $order->get_id()]);
+			RTBTCH_Logger::warning('Webhook replay ignored', ['order_id' => $order->get_id()]);
 			return new WP_Error('replay', 'Duplicate delivery.');
 		}
 		set_transient($replay_key, 1, self::WEBHOOK_REPLAY_TTL);
@@ -146,7 +146,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_REST_API
 	 * @param WP_REST_Request $request The REST API request object.
 	 * @return WP_REST_Response The response object.
 	 */
-	public function bank_transfer_handle_api_request(WP_REST_Request $request)
+	public function rtbtch_handle_api_request(WP_REST_Request $request)
 	{
 		$method      = strtoupper($request->get_method());
 		$log_context = ['source' => 'rt-bank-transfer-checkout'];
@@ -160,7 +160,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_REST_API
 			$provided_key = sanitize_text_field($params['key'] ?? ($params['order_key'] ?? ''));
 			$order        = ($order_id > 0) ? wc_get_order($order_id) : false;
 
-			Bank_Transfer_Payment_Gateway_Logger::info(
+			RTBTCH_Logger::info(
 				"Bank Transfer API HIT | Method: {$method} | Order #{$order_id}",
 				$log_context
 			);
@@ -171,7 +171,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_REST_API
 				!$order ||
 				empty($provided_key) ||
 				!hash_equals($order->get_order_key(), $provided_key) ||
-				!bank_transfer_is_gateway_order($order)
+				!rtbtch_is_gateway_order($order)
 			) {
 				return new WP_REST_Response([
 					'success' => false,
@@ -187,8 +187,8 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_REST_API
 			// The customer is back from the payment portal. Confirm the payment with
 			// the backend right now so the order-received page shows the settled
 			// state even when the webhook has not arrived yet.
-			if ($order->has_status(['pending', 'on-hold']) && class_exists('BANK_TRANSFER_PAYMENT_GATEWAY_Loader')) {
-				BANK_TRANSFER_PAYMENT_GATEWAY_Loader::get_instance()->sync_single_order_status($order);
+			if ($order->has_status(['pending', 'on-hold']) && class_exists('RTBTCH_GATEWAY_Loader')) {
+				RTBTCH_GATEWAY_Loader::get_instance()->sync_single_order_status($order);
 				$order = wc_get_order($order->get_id());
 			}
 
@@ -248,13 +248,13 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_REST_API
 		));
 		$pay_id = trim(trim($pay_id), '"\'');
 
-		Bank_Transfer_Payment_Gateway_Logger::info(
+		RTBTCH_Logger::info(
 			"Bank Transfer API HIT | Method: {$method} | Order #{$order_id} | Status: {$api_order_status} | Pay ID: {$pay_id}",
 			$log_context
 		);
 
 		$order = ($order_id > 0) ? wc_get_order($order_id) : false;
-		if ($order_id <= 0 || !$order || !bank_transfer_is_gateway_order($order)) {
+		if ($order_id <= 0 || !$order || !rtbtch_is_gateway_order($order)) {
 			return new WP_REST_Response([
 				'success'    => false,
 				'error_code' => 'INVALID_API_KEY',
@@ -262,14 +262,14 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_REST_API
 			], 401);
 		}
 
-		$verified = $this->bank_transfer_verify_webhook($request, $order, $pay_id);
+		$verified = $this->rtbtch_verify_webhook($request, $order, $pay_id);
 		if (is_wp_error($verified)) {
 			if ($verified->get_error_code() === 'replay') {
 				// Already processed once; acknowledge without acting on it.
 				return new WP_REST_Response([
 					'success' => false,
 					'message' => 'Duplicate delivery ignored.',
-					'state'   => BANK_TRANSFER_PAYMENT_ENGINE::resolve_final_state($order, $api_order_status),
+					'state'   => RTBTCH_State_Engine::resolve_final_state($order, $api_order_status),
 				], 200);
 			}
 			return new WP_REST_Response([
@@ -282,14 +282,14 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_REST_API
 		// -------------------------
 		// 3. BK-05: ONE STRICT CHECK (payment id, exact amount, currency, order)
 		// -------------------------
-		$loader    = class_exists('BANK_TRANSFER_PAYMENT_GATEWAY_Loader') ? BANK_TRANSFER_PAYMENT_GATEWAY_Loader::get_instance() : null;
+		$loader    = class_exists('RTBTCH_GATEWAY_Loader') ? RTBTCH_GATEWAY_Loader::get_instance() : null;
 		$known_ids = $loader
-			? $loader->bank_transfer_known_order_pay_ids($order)
-			: array_values(array_filter([(string) $order->get_meta('_bank_transfer_pay_id')]));
+			? $loader->rtbtch_known_order_pay_ids($order)
+			: array_values(array_filter([(string) $order->get_meta('_rtbtch_pay_id')]));
 
-		$claim = bank_transfer_verify_payment_claim($order, $data, $pay_id, $known_ids);
+		$claim = rtbtch_verify_payment_claim($order, $data, $pay_id, $known_ids);
 		if (is_wp_error($claim)) {
-			Bank_Transfer_Payment_Gateway_Logger::warning("Webhook refused for Order #{$order_id}: " . $claim->get_error_message(), [
+			RTBTCH_Logger::warning("Webhook refused for Order #{$order_id}: " . $claim->get_error_message(), [
 				'code'     => $claim->get_error_code(),
 				'received' => $pay_id,
 			]);
@@ -309,7 +309,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_REST_API
 		// -------------------------
 		// 4. ENGINE CALL (WEBHOOK ONLY)
 		// -------------------------
-		$result = BANK_TRANSFER_PAYMENT_ENGINE::handle_event(
+		$result = RTBTCH_State_Engine::handle_event(
 			$order_id,
 			'webhook_update',
 			[
@@ -321,7 +321,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_REST_API
 			]
 		);
 
-		Bank_Transfer_Payment_Gateway_Logger::info(
+		RTBTCH_Logger::info(
 			"Bank Transfer ENGINE RESULT | Order #{$order_id} | " . wp_json_encode($result),
 			$log_context
 		);
@@ -340,7 +340,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_REST_API
 		// 5. RESOLVE FINAL STATE
 		// -------------------------
 		$order = wc_get_order($order_id);
-		$state = BANK_TRANSFER_PAYMENT_ENGINE::resolve_final_state(
+		$state = RTBTCH_State_Engine::resolve_final_state(
 			$order,
 			$api_order_status
 		);
@@ -370,7 +370,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_REST_API
 			default                      => ($result === false ? 400 : 200)
 		};
 
-		Bank_Transfer_Payment_Gateway_Logger::info(
+		RTBTCH_Logger::info(
 			"Bank Transfer FINAL RESPONSE | Order #{$order_id} | State: {$state} | WC: {$wc_status} | HTTP: {$http_code}",
 			$log_context
 		);
