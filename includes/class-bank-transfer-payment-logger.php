@@ -4,7 +4,7 @@ if (!defined('ABSPATH')) {
 	exit;
 }
 
-class Bank_Transfer_Payment_Gateway_Logger {
+class RTBTCH_Logger {
 
 	/** Max characters kept for upstream request/response bodies in log context. */
 	const MAX_BODY_LENGTH = 500;
@@ -23,7 +23,7 @@ class Bank_Transfer_Payment_Gateway_Logger {
 
 	private static function is_debug_enabled(): bool
 	{
-		$settings = function_exists('bank_transfer_get_settings') ? bank_transfer_get_settings() : get_option('woocommerce_rt_bank_transfer_settings', []);
+		$settings = function_exists('rtbtch_get_settings') ? rtbtch_get_settings() : get_option('woocommerce_rt_bank_transfer_settings', []);
 		return is_array($settings) && isset($settings['debug']) && 'yes' === $settings['debug'];
 	}
 

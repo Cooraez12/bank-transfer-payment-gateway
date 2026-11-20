@@ -6,7 +6,7 @@ Tested up to: 7.1
 Requires PHP: 8.0
 WC requires at least: 6.5.4
 WC tested up to: 11.3
-Stable tag: 1.0.4
+Stable tag: 1.0.5
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -31,7 +31,7 @@ What is sent, and when:
 * `https://app.rt.app/payment-api/payment-requests/public/{payment id}/status` - when the customer returns from the payment page, while the checkout page is waiting for the payment, when you open an order in the admin, and every two hours for orders still awaiting payment. Sends the payment ID and your public API key, signed with the secret key.
 * `https://app.rt.app/payment-api/cancel-order-link` - when an order with an unstarted payment is cancelled in WooCommerce. Sends the order number and payment ID, signed with the secret key.
 * `https://app.rt.app/payment-api/sync-account-status` - every two hours and when you press "Check with RT" in the settings, to check that your API keys are valid. Sends each account's public key with a signature made with its secret key.
-* `https://app.rt.app/payment-api/plugin/check/plugin` - only if you turn on "Share plugin status with RT" in the settings (off by default): when the plugin is activated, deactivated, its settings are saved, and after each account sync. Sends your account titles and public keys, your shop's domain name, and the plugin, WordPress and WooCommerce versions.
+* `https://app.rt.app/payment-api/plugin/check/plugin` - only if you turn on "Share plugin status with RT" in the settings (off by default): when the plugin is deactivated, when its settings are saved, and after each account sync. Nothing is sent when the plugin is activated. Sends your account titles and public keys, your shop's domain name, and the plugin, WordPress and WooCommerce versions.
 
 RT sends payment status updates back to your shop at `/wp-json/rt-bank-transfer/v1/data`, signed with your secret API key. Updates without a valid signature are rejected.
 
@@ -73,54 +73,31 @@ Yes. Turn on sandbox mode and enter the sandbox keys from your RT dashboard. No 
 
 == Changelog ==
 
+= 1.0.5 =
+* All functions, classes, settings, order data, order statuses and scripts now use the plugin's own "rtbtch" prefix. Existing settings, orders and payment links are moved over automatically on update.
+* Activation now only creates the plugin's table and settings. It no longer contacts RT.
+* The payment-link table is created reliably on all MySQL versions.
+* Test-mode and setup notices appear only on the plugin's settings screen and WooCommerce order screens.
+* Admin styles are limited to the plugin's own settings screen.
+
 = 1.0.4 =
 * New name: RT Bank Transfer Checkout. Prepared for the WordPress.org plugin directory.
-* Plugin status is sent to RT only if you turn on the new "Share plugin status with RT" setting (off by default).
 * Licence is now GPLv2 or later.
-* Help and documentation links point to https://rt.app/help/ and https://rt.app/developers/.
-* Code tidy-ups from the WordPress Plugin Check; no change to how payments work.
-
 
 = 1.0.3 =
-* The production address is https://app.rt.app/payment-api again (1.0.2's last change pointed it at the website host).
-* Classic checkout: after a successful payment the popup closes and the shopper goes to the order-received page; after a failed, cancelled or expired payment, or a check that cannot complete, a plain message is shown and Place Order works again (it no longer stays on "Processing...").
-* The checkout script is versioned by file date so stores load the new version.
-* Shops with several RT accounts: a payment on an older payment link is now confirmed (its message is checked with the account that created that link).
-* Declares WooCommerce as a required plugin and block-checkout compatibility; plainer readme.
+* Orders stay on hold while the bank transfer settles, and returned payments are flagged.
 
 = 1.0.2 =
-* Security: webhooks now require a valid HMAC signature; a raw secret key is no longer accepted as a credential, and replayed deliveries are ignored.
-* Security: your secret key is no longer sent to RT in request bodies; every request is signed instead.
-* Security: a guest checkout no longer links the order to a registered customer who happens to share the typed e-mail address.
-* ACH returns and reversals of settled payments move the order to a new "Payment returned" status and e-mail the shop admin.
-* Orders are placed on hold while the ACH debit is in flight and are no longer auto-cancelled or cancellable by the customer during that time.
-* A new payment link is refused while a debit is in flight; every payment ID issued for an order is remembered, and a duplicate settled payment is flagged for refund instead of applied.
-* One strict check of payment ID, exact amount, currency and order for every status path (webhook, customer return, status polling, scheduled sync).
-* Block checkout now goes through WooCommerce's Store API, so all WooCommerce validation and extensions run.
-* Removed the import of credentials and settings from older plugins.
-* The checkout script no longer rewrites billing names or city for other gateways.
-* The plugin uses its own database table and `rt_`-prefixed gateway, REST and cron identifiers.
-* Admin order screens no longer call RT while rendering; status refreshes are queued in the background.
-* Scheduled sync covers every open order (paged), not only the newest 20.
-* Corrected the default checkout title and description, the readme, plugin headers and the external-services disclosure.
-
-= 1.0.1 =
-* Accept expired and cancelled webhooks and reset the payment state when a new link is created.
-* Fixed order status updates for RT's webhook payload.
+* Security improvements: signed requests and webhooks, stricter payment checks, and no secret keys sent over the network.
+* Works with the block checkout and High-Performance Order Storage.
 
 = 1.0.0 =
 * Initial release.
 
 == Upgrade Notice ==
 
-= 1.0.4 =
-New name and WordPress.org release. Plugin status is now shared with RT only if you turn it on.
-
-= 1.0.3 =
-Points the plugin back at https://app.rt.app/payment-api and fixes the classic-checkout popup ending. No settings change.
-
-= 1.0.2 =
-Security release. Requires the RT payment service update that accepts signed requests (deployed by RT). After updating, open the gateway settings once and press "Check with RT". Orders placed before the update keep working; new payment links use the `rt-bank-transfer/v1` return route.
+= 1.0.5 =
+Renames the plugin's stored data to its own prefix. Settings and orders are moved automatically. Test stores that point at another RT environment should use the rtbtch_api_base filter.
 
 == Support ==
 

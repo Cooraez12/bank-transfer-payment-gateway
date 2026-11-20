@@ -2,7 +2,7 @@
 if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
 
 require_once plugin_dir_path(__FILE__) . 'config.php';
-require_once plugin_dir_path(__FILE__) . 'bank-transfer-payment-gateway-utils.php';
+require_once plugin_dir_path(__FILE__) . 'rt-bank-transfer-payment-gateway-utils.php';
 
 use Automattic\WooCommerce\Blocks\Payments\Integrations\AbstractPaymentMethodType;
 
@@ -15,13 +15,13 @@ use Automattic\WooCommerce\Blocks\Payments\Integrations\AbstractPaymentMethodTyp
  * validators and consent checkbox) and calls process_payment(), whose
  * redirect sends the shopper to RT's payment page.
  */
-class BANK_TRANSFER_Blocks_Gateway extends AbstractPaymentMethodType {
+class RTBTCH_Blocks_Gateway extends AbstractPaymentMethodType {
 
-	protected $name = BANK_TRANSFER_GATEWAY_ID;
-	protected $id   = BANK_TRANSFER_GATEWAY_ID;
+	protected $name = RTBTCH_GATEWAY_ID;
+	protected $id   = RTBTCH_GATEWAY_ID;
 
 	public function initialize() {
-		$this->settings = bank_transfer_get_settings();
+		$this->settings = rtbtch_get_settings();
 	}
 
 	public function is_active() {
@@ -42,12 +42,12 @@ class BANK_TRANSFER_Blocks_Gateway extends AbstractPaymentMethodType {
 	}
 
 	public function get_payment_method_script_handles() {
-		$blocks_js_path = plugin_dir_path(BANK_TRANSFER_PAYMENT_GATEWAY_FILE) . 'assets/js/bank-transfer-blocks.js';
-		$blocks_js_ver  = file_exists($blocks_js_path) ? filemtime($blocks_js_path) : bank_transfer_get_plugin_version();
+		$blocks_js_path = plugin_dir_path(RTBTCH_GATEWAY_FILE) . 'assets/js/rt-bank-transfer-blocks.js';
+		$blocks_js_ver  = file_exists($blocks_js_path) ? filemtime($blocks_js_path) : rtbtch_get_plugin_version();
 
 		wp_register_script(
 			'rt-bank-transfer-blocks-js',
-			plugin_dir_url(BANK_TRANSFER_PAYMENT_GATEWAY_FILE) . 'assets/js/bank-transfer-blocks.js',
+			plugin_dir_url(RTBTCH_GATEWAY_FILE) . 'assets/js/rt-bank-transfer-blocks.js',
 			['wc-blocks-registry', 'wc-settings', 'wp-element', 'wp-html-entities', 'wp-i18n'],
 			$blocks_js_ver,
 			true
@@ -58,7 +58,7 @@ class BANK_TRANSFER_Blocks_Gateway extends AbstractPaymentMethodType {
 
 	public function get_payment_method_data() {
 		$title       = $this->settings['title'] ?? __('Pay by bank transfer', 'rt-bank-transfer-checkout');
-		$description = class_exists('BANK_TRANSFER_PAYMENT_GATEWAY') ? BANK_TRANSFER_PAYMENT_GATEWAY::clean_description($this->settings['description'] ?? '') : wp_strip_all_tags((string) ($this->settings['description'] ?? ''));
+		$description = class_exists('RTBTCH_GATEWAY') ? RTBTCH_GATEWAY::clean_description($this->settings['description'] ?? '') : wp_strip_all_tags((string) ($this->settings['description'] ?? ''));
 
 		if (WC()->cart) {
 			$amount = (float) WC()->cart->get_total('edit');
@@ -81,13 +81,13 @@ class BANK_TRANSFER_Blocks_Gateway extends AbstractPaymentMethodType {
 			'title'                 => sanitize_text_field($title),
 			'description'           => wp_kses_post($description),
 			'supports'              => ['products'],
-			'plugin_version'        => bank_transfer_get_plugin_version(),
+			'plugin_version'        => rtbtch_get_plugin_version(),
 			'isActive'              => $is_active,
 			'can_pay'               => $is_active,
 			'instructions'          => $this->settings['instructions'] ?? '',
 			'show_consent_checkbox' => ($this->settings['show_consent_checkbox'] ?? 'no') === 'yes',
 			'consent_label'         => __('I consent to the collection of my data to process this payment', 'rt-bank-transfer-checkout'),
-			'consent_nonce'         => wp_create_nonce('bank_transfer_payment'),
+			'consent_nonce'         => wp_create_nonce('rtbtch_payment'),
 			'redirect_notice'       => __('After you place the order, you will go to RT\'s secure page to connect your bank and approve the payment.', 'rt-bank-transfer-checkout'),
 		];
 	}

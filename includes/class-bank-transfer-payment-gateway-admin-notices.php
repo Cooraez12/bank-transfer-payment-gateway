@@ -3,11 +3,11 @@ if (!defined('ABSPATH')) {
 	exit; // Exit if accessed directly.
 }
 
-class BANK_TRANSFER_PAYMENT_GATEWAY_Admin_Notices
+class RTBTCH_GATEWAY_Admin_Notices
 {
 	private $notices = [];
 
-	public function bank_transfer_add_notice($key, $type, $message)
+	public function rtbtch_add_notice($key, $type, $message)
 	{
 		// Sanitize the input before storing it
 		$sanitized_key = sanitize_key($key);
@@ -17,7 +17,7 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Admin_Notices
 		$this->notices[] = array('key' => $sanitized_key, 'type' => $sanitized_type, 'message' => $sanitized_message);
 	}
 
-	public function bank_transfer_remove_notice($key)
+	public function rtbtch_remove_notice($key)
 	{
 		// Sanitize the key before using it
 		$sanitized_key = sanitize_key($key);
@@ -35,6 +35,9 @@ class BANK_TRANSFER_PAYMENT_GATEWAY_Admin_Notices
 
 	public function display_notices()
 	{
+		if (empty($this->notices) || !rtbtch_is_own_admin_screen()) {
+			return;
+		}
 		// Escape data just before outputting it
 		foreach ($this->notices as $notice) {
 			echo '<div class="' . esc_attr($notice['type']) . '"><p>' . esc_html($notice['message']) . '</p></div>';
