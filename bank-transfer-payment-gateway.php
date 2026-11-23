@@ -7,7 +7,7 @@
  * Author URI: https://rt.app/
  * Text Domain: rt-bank-transfer-checkout
  * Plugin URI: https://rt.app/accept-payments/
- * Version: 1.0.5
+ * Version: 1.0.6
  * Requires at least: 6.2
  * Requires PHP: 8.0
  * Requires Plugins: woocommerce
@@ -234,10 +234,44 @@ function rtbtch_cancel_unpaid_order_action($order_id)
 		]);
 	} else {
 		$response_code = wp_remote_retrieve_response_code($response);
-		if ($response_code >= 200 && $response_code < 300) {
+		// RT answers 200 either way: the body says whether the link was cancelled.
+		$decoded        = json_decode((string) wp_remote_retrieve_body($response), true);
+		$api_ok         = $response_code >= 200 && $response_code < 300 && is_array($decoded);
+		$updated_status = $api_ok ? (string) ($decoded['updated_status'] ?? '') : '';
+
+		if ($api_ok && !empty($decoded['status'])) {
 			RTBTCH_Logger::info("Cancel API successful for Order ID: {$order_id}.", [
 				'source'   => 'rt-bank-transfer-checkout',
 				'order_id' => $order_id,
+			]);
+			if (!$order->get_meta('_rtbtch_rt_cancel_noted')) {
+				$order->update_meta_data('_rtbtch_rt_cancel_noted', 'yes');
+				$order->add_order_note(
+					'<strong>Bank Transfer Gateway</strong><br><br>' .
+					esc_html__('The order was cancelled, so its payment link was cancelled in your RT account too. The customer can no longer pay with it.', 'rt-bank-transfer-checkout')
+				);
+				$order->save();
+			}
+		} elseif ($api_ok && $updated_status === 'reconciliation_required') {
+			// RT refused: the bank transfer is on its way (or arrived) after all.
+			RTBTCH_Logger::warning("Cancel refused by RT, payment under way. Order ID: {$order_id}.", [
+				'source'   => 'rt-bank-transfer-checkout',
+				'order_id' => $order_id,
+			]);
+			if (!$order->get_meta('_rtbtch_rt_cancel_refused_noted')) {
+				$order->update_meta_data('_rtbtch_rt_cancel_refused_noted', 'yes');
+				$order->add_order_note(
+					'<strong>Bank Transfer Gateway</strong><br><br>' .
+					esc_html__('This order was cancelled while the customer\'s bank transfer was already on its way. The payment could not be stopped. This order will be updated when the money arrives or the payment fails; if it arrives, refund it in your RT account.', 'rt-bank-transfer-checkout')
+				);
+				$order->save();
+			}
+		} elseif ($api_ok) {
+			RTBTCH_Logger::warning("Cancel API did not cancel the link for Order ID: {$order_id}.", [
+				'source'      => 'rt-bank-transfer-checkout',
+				'order_id'    => $order_id,
+				'updated'     => $updated_status,
+				'api_message' => sanitize_text_field((string) ($decoded['message'] ?? '')),
 			]);
 		} else {
 			RTBTCH_Logger::warning("Cancel API returned non-200 code for Order ID: {$order_id}.", [
@@ -267,7 +301,7 @@ add_action('admin_notices', function () {
 		esc_html__('RT Bank Transfer: test mode is on.', 'rt-bank-transfer-checkout') . '</strong> ' .
 		esc_html__('Bank transfer orders are test orders and no real money is received.', 'rt-bank-transfer-checkout');
 	if (rtbtch_is_production_environment()) {
-		echo ' ' . esc_html__('Because this is a live shop, test orders are put On hold instead of being marked paid. Turn test mode off in the RT Bank Transfer settings before taking real orders.', 'rt-bank-transfer-checkout');
+		echo ' ' . esc_html__('Paid test orders are marked paid like real ones and labelled TEST: do not ship them. Turn test mode off in the RT Bank Transfer settings before taking real orders.', 'rt-bank-transfer-checkout');
 	} else {
 		echo ' ' . esc_html__('Turn test mode off in the RT Bank Transfer settings before taking real orders.', 'rt-bank-transfer-checkout');
 	}

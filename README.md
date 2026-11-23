@@ -31,7 +31,7 @@ RT only reports `success` once the ACH debit has completed, so a paid order alwa
 | Setting | Meaning |
 |---|---|
 | Title / Description | What the customer sees at checkout. Each account can override them. |
-| Sandbox | Use the accounts' sandbox keys. On a production site (`WP_ENVIRONMENT_TYPE`), sandbox-paid orders are placed on hold instead of marked paid. |
+| Sandbox | Use the accounts' sandbox keys. A paid test order is marked Processing/Completed like a real one, labelled TEST and noted "TEST payment" (the `rt_bank_transfer_hold_test_payments` filter puts them On hold instead). |
 | Payment Accounts | One or more RT accounts. The lowest priority number is tried first; an account that fails its daily-limit check is skipped. |
 | Order Status | Status after settlement: Processing or Completed. |
 | Show Consent Checkbox | Require the customer to consent to data processing before paying. |

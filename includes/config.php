@@ -78,7 +78,7 @@ if (!defined('RTBTCH_BASE_URL')) {
 }
 
 if (!defined('RTBTCH_PLUGIN_VERSION')) {
-    define('RTBTCH_PLUGIN_VERSION', '1.0.5');
+    define('RTBTCH_PLUGIN_VERSION', '1.0.6');
 }
 
 /*

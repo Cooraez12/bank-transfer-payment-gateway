@@ -365,19 +365,37 @@ class RTBTCH_State_Engine
     /**
      * Mark the order paid.
      *
-     * BK-18: a sandbox "success" on a production site must not put a real
-     * order into fulfilment. The order is parked on-hold with a note instead
-     * of processing/completed, and stock is not reduced a second time.
+     * A settled payment always leaves On hold: RT shows it as successful, so
+     * the order shows Processing/Completed too. That includes a TEST payment
+     * (sandbox keys). Up to 1.0.4 a test payment on a site whose
+     * WP_ENVIRONMENT_TYPE read "production" -- WordPress's default, so nearly
+     * every test and staging shop -- was parked On hold for good (BK-18) and
+     * a successful payment never showed as one. A test order is told apart
+     * the way it is everywhere else instead: the TEST label in the orders
+     * list, the notice on the order screen, the admin warning while test
+     * mode is on, and the note added here.
+     *
+     * A shop that wants the old behaviour back returns true from the
+     * 'rt_bank_transfer_hold_test_payments' filter.
      */
     private static function complete_payment($order, $wc_status, $payment_token)
     {
-        if ($order->get_meta('_rtbtch_is_test_order') && rtbtch_is_production_environment()) {
-            $order->update_status(
-                'on-hold',
-                __('This was a test payment. No real money was received. Because this is a live shop, the order was put on hold instead of being marked paid. Do not ship it.', 'rt-bank-transfer-checkout')
-            );
-            $order->update_meta_data('_rtbtch_sandbox_success_held', 'yes');
-            return;
+        if ($order->get_meta('_rtbtch_is_test_order')) {
+            if (apply_filters('rt_bank_transfer_hold_test_payments', false, $order)) {
+                $order->update_status(
+                    'on-hold',
+                    __('This was a test payment. No real money was received. The order was put on hold instead of being marked paid. Do not ship it.', 'rt-bank-transfer-checkout')
+                );
+                $order->update_meta_data('_rtbtch_sandbox_success_held', 'yes');
+                return;
+            }
+            if (!$order->get_meta('_rtbtch_test_payment_noted')) {
+                $order->update_meta_data('_rtbtch_test_payment_noted', 'yes');
+                $order->add_order_note(
+                    '<strong>Bank Transfer Gateway</strong><br><br>' .
+                    esc_html__('This was a TEST payment made with sandbox keys. No real money was received. Do not ship this order.', 'rt-bank-transfer-checkout')
+                );
+            }
         }
 
         // payment_complete() records the transaction id and paid date,
