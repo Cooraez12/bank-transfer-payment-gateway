@@ -6,7 +6,7 @@ Tested up to: 7.1
 Requires PHP: 8.0
 WC requires at least: 6.5.4
 WC tested up to: 11.3
-Stable tag: 1.0.5
+Stable tag: 1.0.6
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -64,7 +64,7 @@ The customer's bank returned the settled payment (for example, insufficient fund
 
 = Can I test without taking real payments? =
 
-Yes. Turn on sandbox mode and enter the sandbox keys from your RT dashboard. No real money moves. On a live site (`WP_ENVIRONMENT_TYPE` set to `production`), paid test orders are put on hold with a note instead of being marked paid, so they are never shipped by mistake.
+Yes. Turn on sandbox mode and enter the sandbox keys from your RT dashboard. No real money moves. A paid test order is marked Processing (or Completed) like a real one; it carries a TEST label in the orders list and a "TEST payment" note, so it is not shipped by mistake.
 
 == Screenshots ==
 
@@ -72,6 +72,12 @@ Yes. Turn on sandbox mode and enter the sandbox keys from your RT dashboard. No 
 2. The settings screen with a payment account added.
 
 == Changelog ==
+
+= 1.0.6 =
+* Cancelling an order in WooCommerce now cancels its payment in your RT account too, also when the customer had already opened RT's payment page.
+* If the bank transfer is already on its way when you cancel, RT keeps the payment and the order says so.
+* A paid test (sandbox) order is now marked Processing or Completed like a real one, with a "TEST payment" note and the TEST label. Before, it stayed On hold on any site that does not set `WP_ENVIRONMENT_TYPE`.
+* The answer from RT to a cancellation is now read: "not cancelled" is no longer logged as a success.
 
 = 1.0.5 =
 * All functions, classes, settings, order data, order statuses and scripts now use the plugin's own "rtbtch" prefix. Existing settings, orders and payment links are moved over automatically on update.
@@ -95,6 +101,9 @@ Yes. Turn on sandbox mode and enter the sandbox keys from your RT dashboard. No 
 * Initial release.
 
 == Upgrade Notice ==
+
+= 1.0.6 =
+Cancelled orders now show as cancelled in RT, and paid test orders no longer stay On hold. No settings change.
 
 = 1.0.5 =
 Renames the plugin's stored data to its own prefix. Settings and orders are moved automatically. Test stores that point at another RT environment should use the rtbtch_api_base filter.
