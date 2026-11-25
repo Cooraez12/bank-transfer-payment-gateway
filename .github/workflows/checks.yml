@@ -1,21 +1,31 @@
-name: Plugin checks
-on:
-  pull_request:
-  workflow_dispatch:
-  push:
-    branches: [main]
+name: Bank transfer WordPress submission check
+on: workflow_dispatch
 permissions:
   contents: read
 jobs:
-  checks:
+  plugin-check:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
+          ref: e5333607759ec983bac7ffa4a1840471df8159ce
           persist-credentials: false
-      - name: PHP syntax
-        run: git ls-files -z '*.php' | xargs -0 -n1 php -l
-      - name: JavaScript syntax
-        run: git ls-files -z '*.js' | xargs -0 -n1 node --check
-      - name: Existing isolated payment contracts
-        run: php -n -d extension=ctype tests/test_webhook_account.php
+      - name: Prepare exact shipping files
+        run: |
+          python3 - <<'PYCODE'
+          from pathlib import Path
+          import subprocess,shutil
+          root=Path('submission/rt-bank-transfer-checkout');root.mkdir(parents=True)
+          exclude={'.distignore','.github/workflows/checks.yml','README.md','tests/test_cancel_and_success.php','tests/test_webhook_account.php'}
+          files=subprocess.check_output(['git','ls-files'],text=True).splitlines()
+          for name in files:
+              if name in exclude:continue
+              dst=root/name;dst.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(name,dst)
+          assert sum(p.is_file() for p in root.rglob('*'))==43
+          PYCODE
+      - name: WordPress Plugin Check, all checks
+        uses: WordPress/plugin-check-action@10857da14b6c2246d15402b3e69f777edcf8c12e
+        with:
+          build-dir: submission/rt-bank-transfer-checkout
+          slug: rt-bank-transfer-checkout
