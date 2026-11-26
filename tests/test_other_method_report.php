@@ -22,6 +22,7 @@ function set_transient($k, $v, $t = 0) { $GLOBALS['transients'][$k] = $v; return
 function is_wp_error($v) { return $v instanceof WP_Error; }
 function __($s) { return $s; }
 function esc_html__($s) { return $s; }
+function home_url() { return 'https://shop.test/'; }
 class WP_Error { private $c; public function __construct($c, $m = '') { $this->c = $c; } public function get_error_code() { return $this->c; } }
 class WP_REST_Response { public $data; public $status; public function __construct($d, $s = 200) { $this->data = $d; $this->status = $s; } }
 class WC_Order {
@@ -71,6 +72,11 @@ check('L1d the link closing (expired) is acknowledged without a note', $res->sta
 $order = $moved();
 $res = $report->invoke($api, $signed('sk_wrong', '{"order_id":42,"order_status":"success","pay_id":"PAY-1"}'), $order, 'success', 'PAY-1');
 check('L2 an unsigned (wrong secret) late report is refused, no note', $res->status === 401 && $count($order) === 0 && $order->saves === 0);
+
+// One RT business, several shops: every bank link names its shop.
+check('SH1 the shop tag is 8 hex of the home URL hash (trailing slash ignored)', rtbtch_store_ref() === substr(hash('sha256', 'https://shop.test'), 0, 8));
+check('SH2 another shop gets another tag', substr(hash('sha256', 'https://second-shop.test'), 0, 8) !== rtbtch_store_ref());
+check('SH3 request-payment sends meta_data.store_ref', str_contains(file_get_contents(dirname(__DIR__) . '/includes/class-bank-transfer-payment-gateway.php'), "'store_ref'      => rtbtch_store_ref(),"));
 
 $failed = count(array_filter($results, fn($x) => !$x));
 echo "\n" . count($results) . " checks, $failed failed\n";

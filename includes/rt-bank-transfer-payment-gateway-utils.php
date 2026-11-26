@@ -113,6 +113,18 @@ if (!function_exists('rtbtch_get_plugin_version')) {
  * ========================================================================= */
 
 /**
+ * This shop's tag at RT: 8 hex of a hash of its home URL. One RT business can
+ * run several WooCommerce shops whose order numbers repeat; RT matches an
+ * order only within its shop. Stable, and names no secret.
+ *
+ * @return string
+ */
+function rtbtch_store_ref()
+{
+	return substr(hash('sha256', rtrim((string) home_url(), '/')), 0, 8);
+}
+
+/**
  * Every gateway id an order of this plugin may carry: the current one and
  * the pre-1.0.2 one.
  *

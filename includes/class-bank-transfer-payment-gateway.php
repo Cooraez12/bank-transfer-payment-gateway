@@ -1929,6 +1929,8 @@ class RTBTCH_GATEWAY extends WC_Payment_Gateway_CC
 			'amount'         => $amount,
 			'source'         => 'woocommerce',
 			'plugin_version' => $plugin_version,
+			// One RT business can run several shops whose order numbers repeat.
+			'store_ref'      => rtbtch_store_ref(),
 		]);
 
 		// BK-06: only the customer WooCommerce attached to the order. A guest
