@@ -352,6 +352,28 @@ function rtbtch_release_on_switch($order)
 }
 
 /* =========================================================================
+ * Bank transfer not switched on at RT: tell the shop owner, in plain words
+ * ========================================================================= */
+
+add_action('admin_notices', 'rtbtch_bank_transfer_off_notice');
+
+/**
+ * Shown on the plugins screen, this plugin's settings and WooCommerce orders
+ * after RT refused a bank payment because bank transfer is not switched on for
+ * the business. Cleared by the next bank payment RT accepts.
+ */
+function rtbtch_bank_transfer_off_notice()
+{
+	if (!current_user_can('manage_woocommerce') || !get_option('rtbtch_bank_transfer_off_at') || !rtbtch_is_own_admin_screen(true)) {
+		return;
+	}
+	echo '<div class="notice notice-error"><p><strong>' .
+		esc_html__('Bank transfer isn\'t switched on for your RT business yet.', 'rt-bank-transfer-checkout') . '</strong> ' .
+		esc_html__('Customers can\'t pay by bank transfer until it is. Contact RT support to switch it on.', 'rt-bank-transfer-checkout') .
+		'</p></div>';
+}
+
+/* =========================================================================
  * BK-18: sandbox mode on a production site
  * ========================================================================= */
 

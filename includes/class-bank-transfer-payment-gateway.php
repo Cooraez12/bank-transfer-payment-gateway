@@ -1636,6 +1636,14 @@ class RTBTCH_GATEWAY extends WC_Payment_Gateway_CC
 					]
 				);
 
+				// RT says bank transfer is not switched on for this business: the shop
+				// owner sees a notice in WooCommerce (the shopper sees the usual message).
+				if (403 === $http_code && 'not_enabled' === ($resp_data['errors']['bank_transfer'][0] ?? '')) {
+					update_option('rtbtch_bank_transfer_off_at', time(), false);
+				} elseif ($http_code >= 200 && $http_code < 300) {
+					delete_option('rtbtch_bank_transfer_off_at');
+				}
+
 				if ($http_code < 200 || $http_code >= 300 || empty($resp_data) || ($resp_data['status'] ?? '') === 'error') {
 
 					$error_msg = '';

@@ -79,8 +79,21 @@ check('SH2 another shop gets another tag', substr(hash('sha256', 'https://second
 check('SH3 request-payment sends meta_data.store_ref', str_contains(file_get_contents(dirname(__DIR__) . '/includes/class-bank-transfer-payment-gateway.php'), "'store_ref'      => rtbtch_store_ref(),"));
 
 // Phones go to RT as E.164 from the billing country (UK 07700 900123 -> +447700900123).
-foreach ([['07700 900123','+44','+447700900123'],['+44 7700 900123','+44','+447700900123'],['0044 7700 900123','+44','+447700900123'],['447700900123','44','+447700900123'],['(415) 555-0132','+1','+14155550132'],['1 415 555 0132','+1','+14155550132'],['','+1',''],['030 1234567','+49','+49301234567']] as [$in, $cc, $want]) { $got = rtbtch_e164_phone($in, $cc); check('PH ' . $in . ' [' . $cc . '] -> ' . $want, $got === $want, $got); }
+foreach ([['07700 900123','+44','+447700900123'],['+44 7700 900123','+44','+447700900123'],['0044 7700 900123','+44','+447700900123'],['9123456789','+91','+919123456789'],['3912345678','+39','+393912345678'],['7012345678','+7','+77012345678'],['+91 91234 56789','+91','+919123456789'],['(415) 555-0132','+1','+14155550132'],['1 415 555 0132','+1','+14155550132'],['','+1',''],['030 1234567','+49','+49301234567']] as [$in, $cc, $want]) { $got = rtbtch_e164_phone($in, $cc); check('PH ' . $in . ' [' . $cc . '] -> ' . $want, $got === $want, $got); }
 check('PH payload sends the E.164 phone', str_contains(file_get_contents(dirname(__DIR__) . '/includes/class-bank-transfer-payment-gateway.php'), '$phone        = rtbtch_e164_phone($phone, $country_code);'));
+
+// RT refused because bank transfer is off: the shop owner is told in plain words.
+preg_match('/^function rtbtch_bank_transfer_off_notice\(.*?^}/ms', file_get_contents(dirname(__DIR__) . '/bank-transfer-payment-gateway.php'), $notice_src);
+if (!function_exists('current_user_can')) { function current_user_can($c) { return true; } }
+if (!function_exists('get_current_screen')) { function get_current_screen() { return (object) ['id' => 'woocommerce_page_wc-orders']; } }
+eval($notice_src[0]);
+ob_start(); rtbtch_bank_transfer_off_notice(); $none = ob_get_clean();
+$GLOBALS['options']['rtbtch_bank_transfer_off_at'] = time();
+ob_start(); rtbtch_bank_transfer_off_notice(); $shown = ob_get_clean();
+check('BT1 no notice until RT says bank transfer is off', $none === '');
+check('BT2 notice in plain words, no jargon', str_contains($shown, "Bank transfer isn't switched on for your RT business yet.") && str_contains($shown, 'Contact RT support') && stripos($shown, 'ACH') === false, strip_tags($shown));
+$gw = file_get_contents(dirname(__DIR__) . '/includes/class-bank-transfer-payment-gateway.php');
+check('BT3 the flag is set on RT\'s not_enabled answer and cleared on success', str_contains($gw, "'not_enabled' === (\$resp_data['errors']['bank_transfer'][0] ?? '')") && str_contains($gw, "delete_option('rtbtch_bank_transfer_off_at')"));
 
 $failed = count(array_filter($results, fn($x) => !$x));
 echo "\n" . count($results) . " checks, $failed failed\n";

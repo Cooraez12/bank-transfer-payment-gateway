@@ -685,8 +685,9 @@ function rtbtch_is_own_admin_screen($include_plugins_screen = true)
 
 /**
  * A billing phone as E.164 ("+447700900123"), using the billing country's dial
- * code. A number typed with "+" is kept as typed (digits only). The trunk "0"
- * of a national number is dropped. Empty stays empty.
+ * code. A number typed with "+" or "00" is kept as typed (digits only). The
+ * trunk "0" of a national number is dropped. The dial code is never guessed off
+ * the front of a national number. Empty stays empty.
  *
  * @param string $phone        What the customer typed.
  * @param string $country_code The billing country's dial code ("+44" or "44").
@@ -706,9 +707,11 @@ function rtbtch_e164_phone($phone, $country_code)
 	if ($code === '') {
 		return $phone;
 	}
-	if (strlen($digits) > strlen($code) + 6 && strpos($digits, $code) === 0 && $code !== '1') {
-		$digits = substr($digits, strlen($code)); // typed with the dial code but no "+"
-	} elseif ($code === '1' && strlen($digits) === 11 && $digits[0] === '1') {
+	// The dial code is only ever taken off after "+" or "00" (above): national
+	// numbers can start with the same digits (India 91..., Italy 39..., 7...).
+	// NANP is the one exception: a national number never starts with 1, so
+	// "1 415 555 0132" is the dial code plus 10 digits.
+	if ($code === '1' && strlen($digits) === 11 && $digits[0] === '1') {
 		$digits = substr($digits, 1);
 	}
 	return '+' . $code . ltrim($digits, '0');

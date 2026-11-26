@@ -20,6 +20,7 @@ function rtbtch_uninstall() {
 		'rtbtch_plugin_version',
 		'rtbtch_schema_version',
 		'rtbtch_legacy_rows_migrated',
+		'rtbtch_bank_transfer_off_at',
 	];
 	foreach ($rtbtch_options as $rtbtch_option) {
 		delete_option($rtbtch_option);
