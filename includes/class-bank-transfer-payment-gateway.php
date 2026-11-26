@@ -1636,6 +1636,14 @@ class RTBTCH_GATEWAY extends WC_Payment_Gateway_CC
 					]
 				);
 
+				// RT says bank transfer is not switched on for this business: the shop
+				// owner sees a notice in WooCommerce (the shopper sees the usual message).
+				if (403 === $http_code && 'not_enabled' === ($resp_data['errors']['bank_transfer'][0] ?? '')) {
+					update_option('rtbtch_bank_transfer_off_at', time(), false);
+				} elseif ($http_code >= 200 && $http_code < 300) {
+					delete_option('rtbtch_bank_transfer_off_at');
+				}
+
 				if ($http_code < 200 || $http_code >= 300 || empty($resp_data) || ($resp_data['status'] ?? '') === 'error') {
 
 					$error_msg = '';
@@ -1898,6 +1906,9 @@ class RTBTCH_GATEWAY extends WC_Payment_Gateway_CC
 		$phone       = sanitize_text_field($original_phone);
 		$country     = $order->get_billing_country();
 		$country_code = WC()->countries->get_country_calling_code($country);
+		// E.164 from the billing country: UK 07700 900123 -> +447700900123, so RT
+		// and its payment page keep the country (it showed +1 (077) 009-0012).
+		$phone        = rtbtch_e164_phone($phone, $country_code);
 		
 		$billing_address_1 = sanitize_text_field($order->get_billing_address_1());
 		$billing_address_2 = sanitize_text_field($order->get_billing_address_2());
@@ -1929,6 +1940,8 @@ class RTBTCH_GATEWAY extends WC_Payment_Gateway_CC
 			'amount'         => $amount,
 			'source'         => 'woocommerce',
 			'plugin_version' => $plugin_version,
+			// One RT business can run several shops whose order numbers repeat.
+			'store_ref'      => rtbtch_store_ref(),
 		]);
 
 		// BK-06: only the customer WooCommerce attached to the order. A guest

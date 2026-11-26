@@ -284,6 +284,96 @@ function rtbtch_cancel_unpaid_order_action($order_id)
 }
 
 /* =========================================================================
+ * Another RT payment method chosen for the same order
+ * ========================================================================= */
+
+add_action('woocommerce_before_order_object_save', 'rtbtch_release_on_switch');
+
+/**
+ * The customer went back and chose another payment method for this order (or an
+ * admin changed it). This plugin's open payment link is cancelled at RT first, so
+ * it cannot be paid as well. A bank payment already on its way cannot be stopped:
+ * the shop owner is told, and its later report only adds a note (the order is
+ * never changed by it). Runs inside the order's save: nothing here saves again.
+ *
+ * @param WC_Order $order
+ */
+function rtbtch_release_on_switch($order)
+{
+	if (!$order instanceof WC_Order || !$order->get_id()) {
+		return;
+	}
+	$changes = $order->get_changes();
+	$before  = (string) ($order->get_data()['payment_method'] ?? '');
+	if (!array_key_exists('payment_method', $changes)
+		|| !in_array($before, rtbtch_gateway_ids(), true)
+		|| in_array((string) $changes['payment_method'], rtbtch_gateway_ids(), true)) {
+		return;
+	}
+	$uuid = sanitize_text_field((string) $order->get_meta('_rtbtch_pay_id'));
+	if ($uuid === '' || $uuid === (string) $order->get_meta('_rtbtch_released_pay_id') || $order->is_paid()) {
+		return;
+	}
+	$account = rtbtch_get_order_account($order);
+	if (!is_array($account) || empty($account['secret_key'])) {
+		return;
+	}
+	$raw_body = wp_json_encode([
+		'order_id'   => (int) $order->get_id(),
+		'order_uuid' => $uuid,
+		'status'     => 'canceled',
+		'is_sandbox' => (int) $account['is_sandbox'],
+	]);
+	$response = wp_remote_post(esc_url_raw(RTBTCH_API_BASE_URL . '/cancel-order-link'), [
+		'method'    => 'POST',
+		'timeout'   => 15,
+		'body'      => $raw_body,
+		'headers'   => rtbtch_signed_headers($account['public_key'], $account['secret_key'], $raw_body),
+		'sslverify' => true,
+	]);
+	$decoded = is_wp_error($response) ? null : json_decode((string) wp_remote_retrieve_body($response), true);
+	$code    = is_wp_error($response) ? 0 : (int) wp_remote_retrieve_response_code($response);
+	if ($code >= 200 && $code < 300 && is_array($decoded) && !empty($decoded['status'])) {
+		$order->update_meta_data('_rtbtch_released_pay_id', $uuid); // saved with this order save
+		$order->add_order_note(
+			'<strong>Bank Transfer Gateway</strong><br><br>' .
+			esc_html__('The customer chose another payment method, so their unused bank payment link was cancelled.', 'rt-bank-transfer-checkout')
+		);
+		return;
+	}
+	RTBTCH_Logger::warning('Bank link not cancelled after the order moved to another payment method', [
+		'order_id' => $order->get_id(),
+		'updated'  => is_array($decoded) ? sanitize_text_field((string) ($decoded['updated_status'] ?? '')) : '',
+	]);
+	$order->add_order_note(
+		'<strong>Bank Transfer Gateway</strong><br><br>' .
+		esc_html__('The customer chose another payment method, but RT could not cancel their bank payment link. The bank transfer may already be on its way; you will get a note if it arrives.', 'rt-bank-transfer-checkout')
+	);
+}
+
+/* =========================================================================
+ * Bank transfer not switched on at RT: tell the shop owner, in plain words
+ * ========================================================================= */
+
+add_action('admin_notices', 'rtbtch_bank_transfer_off_notice');
+
+/**
+ * Shown on the plugins screen, this plugin's settings and WooCommerce orders
+ * after RT refused a bank payment because bank transfer is not switched on for
+ * the business. Cleared by the next bank payment RT accepts.
+ */
+function rtbtch_bank_transfer_off_notice()
+{
+	if (!current_user_can('manage_woocommerce') || !get_option('rtbtch_bank_transfer_off_at') || !rtbtch_is_own_admin_screen(true)) {
+		return;
+	}
+	echo '<div class="notice notice-error"><p><strong>' .
+		esc_html__('Bank transfer isn\'t switched on for your RT business yet.', 'rt-bank-transfer-checkout') . '</strong> ' .
+		esc_html__('Customers can\'t pay by bank transfer until it is. Contact RT support to switch it on.', 'rt-bank-transfer-checkout') .
+		'</p></div>';
+}
+
+/* =========================================================================
  * BK-18: sandbox mode on a production site
  * ========================================================================= */
 

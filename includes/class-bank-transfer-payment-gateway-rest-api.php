@@ -62,6 +62,47 @@ class RTBTCH_GATEWAY_REST_API
 		}, 15, 3);
 	}
 
+	/**
+	 * A signed report about an order that started with a bank transfer and
+	 * then moved to another payment method (the customer went back and chose
+	 * another way to pay). The order is never changed by it. When RT says the
+	 * bank payment is on its way or arrived, the shop owner gets one note so
+	 * the extra payment can be refunded; RT is told the message was received.
+	 */
+	private function rtbtch_other_method_report(WP_REST_Request $request, $order, $api_order_status, $pay_id)
+	{
+		$verified = $this->rtbtch_verify_webhook($request, $order, $pay_id);
+		if (is_wp_error($verified)) {
+			$replay = $verified->get_error_code() === 'replay';
+			return new WP_REST_Response([
+				'success' => false,
+				'message' => $replay ? 'Duplicate delivery ignored.' : 'Authentication failed.',
+			], $replay ? 200 : 401);
+		}
+
+		RTBTCH_Logger::warning('Webhook ignored: order #' . $order->get_id() . ' now uses another payment method', [
+			'payment_method' => $order->get_payment_method(),
+			'status'         => $api_order_status,
+			'pay_id'         => $pay_id,
+		]);
+
+		if (in_array(RTBTCH_State_Engine::map_status($api_order_status), ['success', 'processing'], true) && !$order->get_meta('_rtbtch_other_method_paid_noted')) {
+			$order->update_meta_data('_rtbtch_other_method_paid_noted', $pay_id !== '' ? $pay_id : 'yes');
+			$order->add_order_note(
+				'<strong>Bank Transfer Gateway</strong><br><br>' .
+				esc_html__('RT says the customer also paid this order by bank transfer, but the order now uses another payment method. Nothing was changed here. If the customer paid twice, refund the bank payment in your RT account.', 'rt-bank-transfer-checkout')
+			);
+			$order->save();
+		}
+
+		return new WP_REST_Response([
+			'success'       => false,
+			'message'       => 'Order now uses another payment method; unchanged.',
+			'order_status'  => $order->get_status(),
+			'engine_reason' => 'other_payment_method',
+		], 200);
+	}
+
 	public function rtbtch_register_routes()
 	{
 		add_action('rest_api_init', function () {
@@ -254,6 +295,9 @@ class RTBTCH_GATEWAY_REST_API
 		);
 
 		$order = ($order_id > 0) ? wc_get_order($order_id) : false;
+		if ($order && !rtbtch_is_gateway_order($order) && (string) $order->get_meta('_rtbtch_pay_id') !== '') {
+			return $this->rtbtch_other_method_report($request, $order, $api_order_status, $pay_id);
+		}
 		if ($order_id <= 0 || !$order || !rtbtch_is_gateway_order($order)) {
 			return new WP_REST_Response([
 				'success'    => false,

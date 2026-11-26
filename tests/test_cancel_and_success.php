@@ -67,6 +67,12 @@ class WC_Order {
 	public function add_order_note($n) { $this->notes[] = $n; }
 	public function get_total() { return '25.00'; }
 	public function get_payment_method() { return $this->method; }
+	// The order being saved with a new payment method (WC_Data before-save view).
+	public $changes = [];
+	public function get_changes() { return $this->changes; }
+	public function get_data() { return ['payment_method' => $this->method]; }
+	public function is_paid() { return $this->paid; }
+	public $saves = 0;
 	public function get_order_number() { return (string) $this->id; }
 	public function get_edit_order_url() { return ''; }
 	// WooCommerce: a paid order goes to processing from on-hold/pending/failed/cancelled.
@@ -90,6 +96,8 @@ eval('?>' . preg_replace('/^require_once .*$/m', '', file_get_contents($root . '
 // plugin; only the function itself is loaded here.
 preg_match('/^function rtbtch_cancel_unpaid_order_action\(.*?^}/ms', file_get_contents($root . 'bank-transfer-payment-gateway.php'), $cancel_src);
 eval($cancel_src[0]);
+preg_match('/^function rtbtch_release_on_switch\(.*?^}/ms', file_get_contents($root . 'bank-transfer-payment-gateway.php'), $release_src);
+eval($release_src[0]);
 
 const PUB = 'pk_test_A';
 const SEC = 'sk_test_A_SECRET';
@@ -180,6 +188,34 @@ check('C4 another gateway\'s order is left alone', count($GLOBALS['http_log']) =
 $order = new_order(true); $order->status = 'cancelled'; $order->meta['_rtbtch_pay_id'] = '';
 rtbtch_cancel_unpaid_order_action(42);
 check('C5 no payment link was ever raised: RT is not called', count($GLOBALS['http_log']) === 0);
+
+echo "== Customer chose another payment method -> the bank link is cancelled at RT\n";
+$ok = ['status' => true, 'updated_status' => 'canceled', 'message' => 'Order payment link has been cancelled successfully'];
+$order = new_order(true); $order->changes = ['payment_method' => 'rt_card'];
+$GLOBALS['http'] = $answer($ok);
+rtbtch_release_on_switch($order);
+[$url, $req] = $GLOBALS['http_log'][0] ?? ['', ['body' => '{}', 'headers' => []]];
+check('R1 switch away: cancel-order-link is called, signed, for this payment', count($GLOBALS['http_log']) === 1 && str_ends_with($url, '/cancel-order-link') && json_decode($req['body'], true) === ['order_id' => 42, 'order_uuid' => PAY, 'status' => 'canceled', 'is_sandbox' => 1] && hash_hmac('sha256', $req['headers']['X-Timestamp'] . '.' . $req['body'], SEC) === $req['headers']['X-Signature'], $req['body']);
+check('R1b one note, link remembered, order not changed', has_note($order, 'unused bank payment link was cancelled') === 1 && $order->meta['_rtbtch_released_pay_id'] === PAY && $order->get_status() === 'pending' && !$order->paid);
+rtbtch_release_on_switch($order);
+check('R2 a second save does not call RT again', count($GLOBALS['http_log']) === 1);
+
+$order = new_order(true); $order->changes = ['payment_method' => 'rt_card'];
+$GLOBALS['http'] = $answer(['status' => false, 'updated_status' => 'reconciliation_required', 'message' => 'Payment has started.']);
+rtbtch_release_on_switch($order);
+check('R3 RT refuses (transfer on its way): the merchant is told, nothing remembered', has_note($order, 'could not cancel their bank payment link') === 1 && ($order->meta['_rtbtch_released_pay_id'] ?? '') === '');
+
+$order = new_order(true); $order->changes = ['payment_method' => RTBTCH_LEGACY_GATEWAY_ID];
+rtbtch_release_on_switch($order);
+$order2 = new_order(true); $order2->changes = ['customer_note' => 'x'];
+rtbtch_release_on_switch($order2);
+$order3 = new_order(true); $order3->method = 'rt_card'; $order3->changes = ['payment_method' => 'rt_usdc'];
+rtbtch_release_on_switch($order3);
+check('R4 no call: switch to its own legacy id, no payment-method change, or another plugin\'s order', count($GLOBALS['http_log']) === 0);
+
+$order = new_order(true); $order->paid = true; $order->changes = ['payment_method' => 'rt_card'];
+rtbtch_release_on_switch($order);
+check('R5 a paid order is never released', count($GLOBALS['http_log']) === 0);
 
 $failed = count(array_filter($results, fn($x) => !$x));
 echo "\n" . count($results) . " checks, $failed failed\n";
