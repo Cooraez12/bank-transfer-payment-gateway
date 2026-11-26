@@ -683,3 +683,33 @@ function rtbtch_is_own_admin_screen($include_plugins_screen = true)
 	return $screen->id === 'woocommerce_page_wc-settings' && $section === RTBTCH_GATEWAY_ID;
 }
 
+/**
+ * A billing phone as E.164 ("+447700900123"), using the billing country's dial
+ * code. A number typed with "+" is kept as typed (digits only). The trunk "0"
+ * of a national number is dropped. Empty stays empty.
+ *
+ * @param string $phone        What the customer typed.
+ * @param string $country_code The billing country's dial code ("+44" or "44").
+ * @return string
+ */
+function rtbtch_e164_phone($phone, $country_code)
+{
+	$phone = trim((string) $phone);
+	$digits = preg_replace('/\D/', '', $phone);
+	if ($digits === '') {
+		return '';
+	}
+	if (strpos($phone, '+') === 0 || strpos($phone, '00') === 0) {
+		return '+' . (strpos($phone, '00') === 0 ? substr($digits, 2) : $digits);
+	}
+	$code = preg_replace('/\D/', '', (string) $country_code);
+	if ($code === '') {
+		return $phone;
+	}
+	if (strlen($digits) > strlen($code) + 6 && strpos($digits, $code) === 0 && $code !== '1') {
+		$digits = substr($digits, strlen($code)); // typed with the dial code but no "+"
+	} elseif ($code === '1' && strlen($digits) === 11 && $digits[0] === '1') {
+		$digits = substr($digits, 1);
+	}
+	return '+' . $code . ltrim($digits, '0');
+}

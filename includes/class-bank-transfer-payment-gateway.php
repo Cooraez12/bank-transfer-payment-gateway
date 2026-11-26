@@ -1898,6 +1898,9 @@ class RTBTCH_GATEWAY extends WC_Payment_Gateway_CC
 		$phone       = sanitize_text_field($original_phone);
 		$country     = $order->get_billing_country();
 		$country_code = WC()->countries->get_country_calling_code($country);
+		// E.164 from the billing country: UK 07700 900123 -> +447700900123, so RT
+		// and its payment page keep the country (it showed +1 (077) 009-0012).
+		$phone        = rtbtch_e164_phone($phone, $country_code);
 		
 		$billing_address_1 = sanitize_text_field($order->get_billing_address_1());
 		$billing_address_2 = sanitize_text_field($order->get_billing_address_2());

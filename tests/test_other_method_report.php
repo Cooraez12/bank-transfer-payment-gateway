@@ -78,6 +78,10 @@ check('SH1 the shop tag is 8 hex of the home URL hash (trailing slash ignored)',
 check('SH2 another shop gets another tag', substr(hash('sha256', 'https://second-shop.test'), 0, 8) !== rtbtch_store_ref());
 check('SH3 request-payment sends meta_data.store_ref', str_contains(file_get_contents(dirname(__DIR__) . '/includes/class-bank-transfer-payment-gateway.php'), "'store_ref'      => rtbtch_store_ref(),"));
 
+// Phones go to RT as E.164 from the billing country (UK 07700 900123 -> +447700900123).
+foreach ([['07700 900123','+44','+447700900123'],['+44 7700 900123','+44','+447700900123'],['0044 7700 900123','+44','+447700900123'],['447700900123','44','+447700900123'],['(415) 555-0132','+1','+14155550132'],['1 415 555 0132','+1','+14155550132'],['','+1',''],['030 1234567','+49','+49301234567']] as [$in, $cc, $want]) { $got = rtbtch_e164_phone($in, $cc); check('PH ' . $in . ' [' . $cc . '] -> ' . $want, $got === $want, $got); }
+check('PH payload sends the E.164 phone', str_contains(file_get_contents(dirname(__DIR__) . '/includes/class-bank-transfer-payment-gateway.php'), '$phone        = rtbtch_e164_phone($phone, $country_code);'));
+
 $failed = count(array_filter($results, fn($x) => !$x));
 echo "\n" . count($results) . " checks, $failed failed\n";
 exit($failed ? 1 : 0);
